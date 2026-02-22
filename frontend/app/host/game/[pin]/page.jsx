@@ -6,11 +6,13 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { exportAPI, gameAPI, quizAPI } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
+import { getAuthUser } from "@/lib/auth";
 
 export default function HostGamePage() {
   const params = useParams();
   const router = useRouter();
   const pin = String(params.pin || "").toUpperCase();
+  const [authChecked, setAuthChecked] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -32,6 +34,16 @@ export default function HostGamePage() {
   const currentQuestion = useMemo(() => questions[currentIndex], [questions, currentIndex]);
 
   useEffect(() => {
+    const authUser = getAuthUser();
+    if (!authUser || authUser.role !== "host") {
+      router.replace("/login?role=host");
+      return;
+    }
+    setAuthChecked(true);
+  }, [router]);
+
+  useEffect(() => {
+    if (!authChecked) return;
     if (!pin) {
       router.push("/host");
       return;
@@ -81,7 +93,7 @@ export default function HostGamePage() {
     return () => {
       active = false;
     };
-  }, [pin, router]);
+  }, [pin, router, authChecked]);
 
   useEffect(() => {
     if (loading || error || questions.length === 0 || gameEnded) return;
@@ -227,7 +239,7 @@ export default function HostGamePage() {
     setGameEnded(true);
   };
 
-  if (loading) {
+  if (!authChecked || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="card text-center py-10 max-w-md w-full">
@@ -275,6 +287,7 @@ export default function HostGamePage() {
                     <tr className="text-left text-white/60 border-b border-white/10">
                       <th className="py-2 pr-3">Rank</th>
                       <th className="py-2 pr-3">Name</th>
+                      <th className="py-2 pr-3">Roll No.</th>
                       <th className="py-2 pr-0">Points</th>
                     </tr>
                   </thead>
@@ -283,6 +296,7 @@ export default function HostGamePage() {
                       <tr key={player.id || `${player.name}-${idx}`} className="border-b border-white/5">
                         <td className="py-2 pr-3">#{idx + 1}</td>
                         <td className="py-2 pr-3">{player.name}</td>
+                        <td className="py-2 pr-3">{player.roll_number || "-"}</td>
                         <td className="py-2 pr-0">{player.score}</td>
                       </tr>
                     ))}
