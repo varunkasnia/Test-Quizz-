@@ -7,6 +7,7 @@ import { ArrowLeft, Upload, Sparkles, Trash2, Edit, Play, X } from 'lucide-react
 import Link from 'next/link'
 import { useDropzone } from 'react-dropzone'
 import { quizAPI, gameAPI } from '@/lib/api'
+import { getAuthUser } from '@/lib/auth'
 
 interface Question {
   id?: number
@@ -18,6 +19,7 @@ interface Question {
 
 export default function CreateQuizPage() {
   const router = useRouter()
+  const [authChecked, setAuthChecked] = useState(false)
   const [step, setStep] = useState<'input' | 'review'>('input')
   const [topic, setTopic] = useState('')
   const [description, setDescription] = useState('')
@@ -34,11 +36,18 @@ export default function CreateQuizPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
 
   useEffect(() => {
+    const authUser = getAuthUser()
+    if (!authUser || authUser.role !== 'host') {
+      router.replace('/login?role=host')
+      return
+    }
+
     const storedHostName = localStorage.getItem('hostName')
     if (storedHostName) {
       setHostName(storedHostName)
     }
-  }, [])
+    setAuthChecked(true)
+  }, [router])
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -59,6 +68,16 @@ export default function CreateQuizPage() {
     },
     maxFiles: 1,
   })
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="card text-center py-10 max-w-md w-full">
+          <p className="text-white/60">Checking host access...</p>
+        </div>
+      </div>
+    )
+  }
 
   const handleGenerate = async () => {
     setError('')
