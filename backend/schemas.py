@@ -125,8 +125,8 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
-    role: str = Field(..., pattern="^(host|joiner)$")
-
+    # Make role optional with a default value so it stops failing validation!
+    role: Optional[str] = Field(default="host", pattern="^(host|joiner)$")
 
 class AuthUserResponse(BaseModel):
     id: int
