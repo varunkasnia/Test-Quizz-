@@ -37,3 +37,4 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
 google-generativeai
+bcrypt==3.2.2
