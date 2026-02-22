@@ -1,4 +1,5 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 from config import settings
 from schemas import QuestionSchema, AIGeneratedQuestions
@@ -7,10 +8,10 @@ import logging
 # Set up logging
 logger = logging.getLogger("uvicorn")
 
-# Configure Gemini
-genai.configure(api_key=settings.GEMINI_API_KEY) 
+# Initialize the new Gemini Client
+# The new SDK uses a client instance instead of a global genai.configure()
+client = genai.Client(api_key=settings.GEMINI_API_KEY) 
 
-# UPDATED: These models exactly match your available list
 MODELS_TO_TRY = [
     "gemini-2.5-flash",       # Latest & Fastest
     "gemini-2.0-flash",       # Very Stable
@@ -43,14 +44,14 @@ def generate_with_fallback(prompt: str, difficulty: str, context_len: int = 0) -
         try:
             logger.info(f"🤖 Attempting to generate quiz using model: {model_name}")
             
-            # Configure model
-            model = genai.GenerativeModel(
-                model_name,
-                generation_config={"response_mime_type": "application/json"}
+            # Generate content using the new client syntax
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
             )
-            
-            # Generate
-            response = model.generate_content(prompt)
             
             # Parse Response
             text_response = response.text.strip()
