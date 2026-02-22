@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, History, Play, Trash2, User, LogOut, Clock3, CircleHelp } from 'lucide-react'
+// Changed CircleHelp to HelpCircle here
+import { ArrowLeft, Plus, History, Play, Trash2, User, LogOut, Clock3, HelpCircle } from 'lucide-react'
 import { gameAPI, quizAPI } from '@/lib/api'
 import { clearAuth, getAuthUser } from '@/lib/auth'
 
@@ -184,7 +185,8 @@ export default function HostPage() {
                     <h3 className="text-2xl font-semibold truncate">{quiz.title}</h3>
                     <div className="mt-2 flex flex-wrap gap-4 text-white/60">
                       <span className="inline-flex items-center gap-1">
-                        <CircleHelp className="w-4 h-4" />
+                        {/* Changed CircleHelp to HelpCircle here */}
+                        <HelpCircle className="w-4 h-4" />
                         {quiz.question_count} questions
                       </span>
                       <span className="inline-flex items-center gap-1">
