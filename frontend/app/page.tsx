@@ -76,7 +76,7 @@ export default function Home() {
       <footer className="border-t border-white/10 py-6 sm:py-8 mt-8">
         <div className="page-wrap flex flex-col items-center gap-3 text-center">
           <Image
-            src="/varun-kumar.jpg"
+            src="public/varun-kumar.jpg"
             alt="Varun Kumar"
             width={96}
             height={96}
@@ -84,7 +84,7 @@ export default function Home() {
             priority
           />
           <div className="text-sm text-white/70 leading-relaxed">
-            <p>Created by Varun Kumar.</p>
+            <p>Created by Varun Kumar (9717541200)</p>
             <p>Turning traditional quizzes into intelligent learning engines — fast, adaptive, and future-ready.</p>
           </div>
         </div>
