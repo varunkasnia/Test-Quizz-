@@ -41,7 +41,20 @@ export default function LoginPage() {
 
       router.push('/host')
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to login.')
+      // FIX: Handle FastAPI's 422 array of objects properly to prevent React Error #31
+      const errorDetail = err?.response?.data?.detail;
+      
+      if (Array.isArray(errorDetail)) {
+        // If it's a 422 validation error array, extract the first error message
+        const firstError = errorDetail[0];
+        setError(`Validation Error: ${firstError.msg} (${firstError.loc.join(' -> ')})`);
+      } else if (typeof errorDetail === 'string') {
+        // If it's a standard string error (like a 401 Unauthorized)
+        setError(errorDetail);
+      } else {
+        // Fallback error
+        setError('Failed to login. Please check your credentials.');
+      }
     } finally {
       setLoading(false)
     }
