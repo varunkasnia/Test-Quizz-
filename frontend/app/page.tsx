@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { ArrowRight, Crown, LogIn, UserPlus, Users, Zap } from 'lucide-react'
+import { ArrowRight, Crown, LogIn, Users, Zap } from 'lucide-react'
 
 export default function Home() {
   return (
@@ -63,15 +63,11 @@ export default function Home() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="max-w-2xl mx-auto mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3"
+          className="max-w-2xl mx-auto mt-8"
         >
           <Link href="/login" className="btn-secondary w-full">
             <LogIn className="w-4 h-4" />
             Login
-          </Link>
-          <Link href="/signup" className="btn-secondary w-full">
-            <UserPlus className="w-4 h-4" />
-            Signup
           </Link>
         </motion.div>
       </main>
