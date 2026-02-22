@@ -66,7 +66,7 @@ export const gameAPI = {
 export const authAPI = {
   signup: (data: { full_name: string; email: string; password: string; role: 'host' | 'joiner' }) =>
     api.post('/api/auth/signup', data),
-  login: (data: { email: string; password: string; role: 'host' | 'joiner' }) =>
+  login: (data: { email: string; password: string }) =>
     api.post('/api/auth/login', data),
   me: () => api.get('/api/auth/me'),
 };
