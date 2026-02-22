@@ -312,6 +312,7 @@ async def get_question_results(pin: str, question_id: int, db: Session = Depends
             player_rows.append({
                 "player_id": p.id,
                 "name": p.name,
+                "roll_number": p.roll_number,
                 "answered": True,
                 "answer": answer.answer,
                 "is_correct": answer.is_correct,
@@ -322,6 +323,7 @@ async def get_question_results(pin: str, question_id: int, db: Session = Depends
             player_rows.append({
                 "player_id": p.id,
                 "name": p.name,
+                "roll_number": p.roll_number,
                 "answered": False,
                 "answer": None,
                 "is_correct": False,
@@ -425,6 +427,7 @@ async def get_game_results(pin: str, db: Session = Depends(get_db)):
         results["players"].append({
             "id": player.id,
             "name": player.name,
+            "roll_number": player.roll_number,
             "score": player.score,
             "correct_answers": correct_count,
             "total_answers": len(answers),
