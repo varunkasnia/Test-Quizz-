@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { ArrowRight, Crown, LogIn, Users, Zap } from 'lucide-react'
 
@@ -73,7 +74,20 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-white/10 py-6 sm:py-8 mt-8">
-        <div className="page-wrap text-sm text-white/55">Created by Varun Kumar</div>
+        <div className="page-wrap flex flex-col items-center gap-3 text-center">
+          <Image
+            src="/varun-kumar.jpg"
+            alt="Varun Kumar"
+            width={96}
+            height={96}
+            className="h-24 w-24 rounded-full object-cover border border-white/20"
+            priority
+          />
+          <div className="text-sm text-white/70 leading-relaxed">
+            <p>Created by Varun Kumar.</p>
+            <p>Turning traditional quizzes into intelligent learning engines — fast, adaptive, and future-ready.</p>
+          </div>
+        </div>
       </footer>
     </div>
   )
