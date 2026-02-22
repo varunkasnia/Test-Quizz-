@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from database import User, get_db
 from schemas import AuthTokenResponse, AuthUserResponse, LoginRequest, SignupRequest
-from services.auth_service import create_access_token, decode_access_token, hash_password, verify_password
+from services.auth_service import create_access_token, decode_access_token, hash_password
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 security = HTTPBearer(auto_error=False)
@@ -60,35 +60,27 @@ async def signup(payload: SignupRequest, db: Session = Depends(get_db)):
 async def login(payload: LoginRequest, db: Session = Depends(get_db)):
     identifier = _normalize_email(payload.email)
 
-    if payload.role == "host":
-        expected_password = ALLOWED_HOST_CREDENTIALS.get(identifier)
-        if not expected_password:
-            raise HTTPException(status_code=403, detail="This Host ID is not allowed")
-        if payload.password != expected_password:
-            raise HTTPException(status_code=401, detail="Invalid Host ID or password")
+    if payload.role != "host":
+        raise HTTPException(status_code=403, detail="Joiners do not need login. Use Join Quiz directly.")
 
-        synthetic_email = f"{identifier}@host.local"
-        user = db.query(User).filter(User.email == synthetic_email).first()
-        if not user:
-            user = User(
-                full_name=identifier.upper(),
-                email=synthetic_email,
-                password_hash=hash_password(expected_password),
-                role="host",
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-    else:
-        user = db.query(User).filter(User.email == identifier).first()
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+    expected_password = ALLOWED_HOST_CREDENTIALS.get(identifier)
+    if not expected_password:
+        raise HTTPException(status_code=403, detail="This Host ID is not allowed")
+    if payload.password != expected_password:
+        raise HTTPException(status_code=401, detail="Invalid Host ID or password")
 
-        if not verify_password(payload.password, user.password_hash):
-            raise HTTPException(status_code=401, detail="Invalid email or password")
-
-        if user.role != payload.role:
-            raise HTTPException(status_code=403, detail="Selected role does not match this account")
+    synthetic_email = f"{identifier}@host.local"
+    user = db.query(User).filter(User.email == synthetic_email).first()
+    if not user:
+        user = User(
+            full_name=identifier.upper(),
+            email=synthetic_email,
+            password_hash=hash_password(expected_password),
+            role="host",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
     token = create_access_token(subject=str(user.id))
 
