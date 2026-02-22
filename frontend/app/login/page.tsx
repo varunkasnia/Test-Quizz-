@@ -34,7 +34,6 @@ export default function LoginPage() {
       const response = await authAPI.login({
         email: email.trim(),
         password,
-        role: 'host',
       })
 
       saveAuth(response.data.access_token, response.data.user)
