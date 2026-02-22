@@ -18,6 +18,7 @@ def generate_csv(game_data: dict) -> BytesIO:
         for answer in player.get('answers', []):
             rows.append({
                 'Player Name': player['name'],
+                'Roll Number': player.get('roll_number') or '',
                 'Question': answer['question_text'],
                 'Player Answer': answer['answer'],
                 'Correct Answer': answer['correct_answer'],
@@ -59,6 +60,7 @@ def generate_excel(game_data: dict) -> BytesIO:
             leaderboard.append({
                 'Rank': idx,
                 'Player Name': player['name'],
+                'Roll Number': player.get('roll_number') or '',
                 'Total Score': player['score'],
                 'Correct Answers': player['correct_count'],
                 'Accuracy %': round((player['correct_count'] / game_data['total_questions']) * 100, 2)
@@ -71,6 +73,7 @@ def generate_excel(game_data: dict) -> BytesIO:
             for answer in player.get('answers', []):
                 detailed.append({
                     'Player': player['name'],
+                    'Roll Number': player.get('roll_number') or '',
                     'Question #': answer['question_number'],
                     'Question': answer['question_text'],
                     'Player Answer': answer['answer'],
@@ -173,6 +176,7 @@ def prepare_game_data_for_export(game_session, players, questions, answers) -> d
         
         players_data.append({
             'name': player.name,
+            'roll_number': player.roll_number,
             'score': player.score,
             'correct_count': correct_count,
             'answers': answers_detail
