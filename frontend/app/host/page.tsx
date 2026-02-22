@@ -185,10 +185,10 @@ export default function HostPage() {
                   <div className="min-w-0">
                     <h3 className="text-2xl font-semibold truncate">{quiz.title}</h3>
                     <div className="mt-2 flex flex-wrap gap-4 text-white/60">
-                      <span className="inline-flex items-center gap-1">
-                        <CircleHelp className="w-4 h-4" />
-                        {quiz.question_count} questions
-                      </span>
+                     <span className="inline-flex items-center gap-1">
+    <HelpCircle className="w-4 h-4" /> 
+    {quiz.question_count} questions
+  </span>
                       <span className="inline-flex items-center gap-1">
                         <Clock3 className="w-4 h-4" />
                         {new Date(quiz.created_at).toLocaleDateString()}
