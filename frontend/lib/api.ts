@@ -67,19 +67,10 @@ export const authAPI = {
   signup: (data: { full_name: string; email: string; password: string; role: 'host' | 'joiner' }) =>
     api.post('/api/auth/signup', data),
     
-  login: (data: { email: string; password: string }) => {
-    // Convert JSON data to URL Encoded Form Data required by FastAPI OAuth2
-    const formData = new URLSearchParams();
-    formData.append('username', data.email); // FastAPI strictly expects 'username'
-    formData.append('password', data.password);
-
-    return api.post('/api/auth/login', formData, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-  },
-  
+  // Reverted back to simple JSON! 
+  login: (data: { email: string; password: string }) => 
+    api.post('/api/auth/login', data),
+    
   me: () => api.get('/api/auth/me'),
 };
 
