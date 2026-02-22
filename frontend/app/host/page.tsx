@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, History, Play, Trash2, User, LogOut, Clock3, CircleHelp } from 'lucide-react'
+
+// Change CircleHelp to HelpCircle
+import { ArrowLeft, Plus, History, Play, Trash2, User, LogOut, Clock3, HelpCircle } from 'lucide-react'
 import { gameAPI, quizAPI } from '@/lib/api'
 import { clearAuth, getAuthUser } from '@/lib/auth'
 
