@@ -28,8 +28,8 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
 
-    if (!email.trim() || !email.includes('@')) {
-      setError('Please enter a valid email address.')
+    if (!email.trim()) {
+      setError(role === 'host' ? 'Please enter your Host ID.' : 'Please enter your email address.')
       return
     }
 
@@ -71,8 +71,21 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm mb-2 text-white/80">Email</label>
-              <input type="email" className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+              <label className="block text-sm mb-2 text-white/80">
+                {role === 'host' ? 'Host ID' : 'Email'}
+              </label>
+              <input
+                type={role === 'host' ? 'text' : 'email'}
+                className="input-field"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={role === 'host' ? 'tester01 or admin' : 'you@example.com'}
+              />
+              {role === 'host' ? (
+                <p className="text-xs text-white/55 mt-2">
+                  Allowed Host IDs: tester01 to tester10, and admin.
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -95,13 +108,6 @@ export default function LoginPage() {
               {loading ? 'Signing In...' : 'Login'}
             </button>
           </form>
-
-          <p className="text-sm text-white/60 mt-5">
-            Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-pink-300 hover:text-pink-200">
-              Signup
-            </Link>
-          </p>
         </div>
       </div>
     </div>
