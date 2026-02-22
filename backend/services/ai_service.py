@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger("uvicorn")
 
 # Configure Gemini
-genai.configure(api_key=settings.GEMINI_API_KEY) 
+genai.configure(api_key=settings.GEMINI_API_KEY)
 
 # UPDATED: These models exactly match your available list
 MODELS_TO_TRY = [
