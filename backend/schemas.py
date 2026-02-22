@@ -81,7 +81,7 @@ class GameSessionResponse(BaseModel):
 class PlayerJoinRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     pin: str = Field(..., min_length=6, max_length=6)
-    roll_number: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    roll_number: str = Field(..., min_length=1, max_length=50)
 
 
 class PlayerResponse(BaseModel):
