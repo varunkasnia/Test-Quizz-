@@ -4,19 +4,16 @@ from config import settings
 from schemas import QuestionSchema, AIGeneratedQuestions
 import logging
 
-# Set up logging
 logger = logging.getLogger("uvicorn")
 
-# Configure Gemini - FIXED: Removed the invisible crashing character from this line!
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
-# UPDATED: These models exactly match your available list
 MODELS_TO_TRY = [
-    "gemini-2.5-flash",       # Latest & Fastest
-    "gemini-2.0-flash",       # Very Stable
-    "gemini-2.0-flash-001",   # Alternative version
-    "gemini-2.5-pro",         # Most Powerful (if Flash fails)
-    "gemini-flash-latest"     # Generic alias
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-001",
+    "gemini-2.5-pro",
+    "gemini-flash-latest"
 ]
 
 QUIZ_JSON_SCHEMA = """
@@ -34,35 +31,26 @@ QUIZ_JSON_SCHEMA = """
 """
 
 def generate_with_fallback(prompt: str, difficulty: str, context_len: int = 0) -> AIGeneratedQuestions:
-    """
-    Tries to generate content using the available models list.
-    """
     last_error = None
 
     for model_name in MODELS_TO_TRY:
         try:
             logger.info(f"🤖 Attempting to generate quiz using model: {model_name}")
             
-            # Configure model
             model = genai.GenerativeModel(
                 model_name,
                 generation_config={"response_mime_type": "application/json"}
             )
             
-            # Generate
             response = model.generate_content(prompt)
-            
-            # Parse Response
             text_response = response.text.strip()
-            # Clean markdown if present
+            
             if text_response.startswith("```json"):
                 text_response = text_response[7:-3]
             elif text_response.startswith("```"):
                 text_response = text_response[3:-3]
 
             data = json.loads(text_response)
-            
-            # Validate
             validated_questions = [QuestionSchema(**q) for q in data["questions"]]
             
             logger.info(f"✅ Success with model: {model_name}")
@@ -77,22 +65,16 @@ def generate_with_fallback(prompt: str, difficulty: str, context_len: int = 0) -
             )
 
         except Exception as e:
-            # Log warning but continue to next model
             logger.warning(f"⚠️ Model {model_name} failed: {str(e)}")
             last_error = e
             continue
 
-    # If all models fail
     error_msg = f"All AI models failed. Please check your API key quota. Last error: {str(last_error)}"
     logger.error(error_msg)
     raise Exception(error_msg)
 
 
-def generate_quiz_from_text(
-    content: str,
-    num_questions: int = 10,
-    difficulty: str = "medium"
-) -> AIGeneratedQuestions:
+def generate_quiz_from_text(content: str, num_questions: int = 10, difficulty: str = "medium") -> AIGeneratedQuestions:
     prompt = f"""
     You are an expert quiz creator. Analyze the content and generate {num_questions} multiple-choice questions.
     Difficulty: {difficulty}
@@ -108,11 +90,7 @@ def generate_quiz_from_text(
     return generate_with_fallback(prompt, difficulty, len(content))
 
 
-def generate_quiz_from_topic(
-    topic: str,
-    num_questions: int = 10,
-    difficulty: str = "medium"
-) -> AIGeneratedQuestions:
+def generate_quiz_from_topic(topic: str, num_questions: int = 10, difficulty: str = "medium") -> AIGeneratedQuestions:
     prompt = f"""
     You are an expert quiz creator. Generate {num_questions} multiple-choice questions about: "{topic}".
     Difficulty: {difficulty}
