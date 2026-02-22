@@ -60,9 +60,6 @@ async def signup(payload: SignupRequest, db: Session = Depends(get_db)):
 async def login(payload: LoginRequest, db: Session = Depends(get_db)):
     identifier = _normalize_email(payload.email)
 
-    if payload.role != "host":
-        raise HTTPException(status_code=403, detail="Joiners do not need login. Use Join Quiz directly.")
-
     expected_password = ALLOWED_HOST_CREDENTIALS.get(identifier)
     if not expected_password:
         raise HTTPException(status_code=403, detail="This Host ID is not allowed")
