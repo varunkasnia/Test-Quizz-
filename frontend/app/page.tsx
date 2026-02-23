@@ -76,7 +76,7 @@ export default function Home() {
       <footer className="border-t border-white/10 py-6 sm:py-8 mt-8">
         <div className="page-wrap flex flex-col items-center gap-3 text-center">
           <Image
-            src="public/varun-kumar.jpg"
+            src="/varun-kumar.jpg"
             alt="Varun Kumar"
             width={96}
             height={96}
