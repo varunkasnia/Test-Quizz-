@@ -1,25 +1,41 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-// Changed CircleHelp to HelpCircle here
-import { ArrowLeft, Plus, History, Play, Trash2, User, LogOut, Clock3, HelpCircle } from 'lucide-react'
-import { gameAPI, quizAPI } from '@/lib/api'
-import { clearAuth, getAuthUser } from '@/lib/auth'
+import { ArrowLeft, Upload, Sparkles, Trash2, Edit, Play, X } from 'lucide-react'
+import Link from 'next/link'
+import { useDropzone } from 'react-dropzone'
+import { quizAPI, gameAPI } from '@/lib/api'
+import { getAuthUser } from '@/lib/auth'
 
-export default function HostPage() {
+interface Question {
+  id?: number
+  question_text: string
+  options: string[]
+  correct_answer: string
+  time_limit: number
+}
+
+export default function CreateQuizPage() {
   const router = useRouter()
+  const [authChecked, setAuthChecked] = useState(false)
+  const [step, setStep] = useState<'input' | 'review'>('input')
+  const [topic, setTopic] = useState('')
+  const [description, setDescription] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [numQuestions, setNumQuestions] = useState(10)
+  const [difficulty, setDifficulty] = useState('medium')
+  const [defaultTimeLimit, setDefaultTimeLimit] = useState(15)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [questions, setQuestions] = useState<Question[]>([])
+  const [quizTitle, setQuizTitle] = useState('')
+  const [quizDescription, setQuizDescription] = useState('')
   const [hostName, setHostName] = useState('')
-  const [ready, setReady] = useState(false)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
 
-  const [quizzes, setQuizzes] = useState<any[]>([])
-  const [history, setHistory] = useState<any[]>([])
-
-  const [loadingQuizzes, setLoadingQuizzes] = useState(true)
-  const [loadingHistory, setLoadingHistory] = useState(false)
-  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [method, setMethod] = useState<'topic' | 'file' | null>(null)
 
   useEffect(() => {
     const authUser = getAuthUser()
@@ -28,240 +44,559 @@ export default function HostPage() {
       return
     }
 
-    const storedHostName = localStorage.getItem('hostName') || authUser?.full_name || ''
-    setHostName(storedHostName)
+    const storedHostName = localStorage.getItem('hostName')
     if (storedHostName) {
-      localStorage.setItem('hostName', storedHostName)
+      setHostName(storedHostName)
     }
-    setReady(true)
+    setAuthChecked(true)
   }, [router])
 
-  useEffect(() => {
-    if (!ready) return
-    loadQuizzes(hostName)
-    if (hostName.trim()) {
-      loadHistory(hostName)
-    } else {
-      setHistory([])
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) {
+      setFile(acceptedFiles[0])
+      setTopic('') // Clear topic when file is selected
     }
-  }, [hostName, ready])
+  }, [])
 
-  const loadQuizzes = async (name: string) => {
-    setLoadingQuizzes(true)
-    try {
-      const response = await quizAPI.list(name.trim() || undefined)
-      setQuizzes(response.data)
-    } catch (error) {
-      console.error('Failed to load quizzes:', error)
-    } finally {
-      setLoadingQuizzes(false)
-    }
-  }
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/pdf': ['.pdf'],
+      'text/plain': ['.txt'],
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+      'application/vnd.ms-powerpoint': ['.ppt'],
+      'image/png': ['.png'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+    },
+    maxFiles: 1,
+  })
 
-  const loadHistory = async (name: string) => {
-    setLoadingHistory(true)
-    try {
-      const response = await gameAPI.history(name.trim())
-      setHistory(response.data)
-    } catch (error) {
-      console.error('Failed to load hosted history:', error)
-      setHistory([])
-    } finally {
-      setLoadingHistory(false)
-    }
-  }
-
-  const persistHostName = (value: string) => {
-    setHostName(value)
-    localStorage.setItem('hostName', value)
-  }
-
-  const handleHostQuiz = async (quizId: number) => {
-    const normalizedHost = hostName.trim()
-    if (!normalizedHost) {
-      alert('Enter host name first to host a quiz')
-      return
-    }
-
-    setActionLoadingId(quizId)
-    try {
-      const response = await gameAPI.create({ quiz_id: quizId, host_name: normalizedHost })
-      router.push(`/host/lobby?pin=${response.data.pin}`)
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to host quiz')
-    } finally {
-      setActionLoadingId(null)
-    }
-  }
-
-  const handleDeleteQuiz = async (quizId: number) => {
-    if (!window.confirm('Delete this quiz? This cannot be undone.')) return
-
-    try {
-      await quizAPI.deleteQuiz(quizId)
-      setQuizzes((prev) => prev.filter((quiz) => quiz.id !== quizId))
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to delete quiz')
-    }
-  }
-
-  const handleDeleteHostedSession = async (sessionId: number) => {
-    const normalizedHost = hostName.trim()
-    if (!normalizedHost) {
-      alert('Enter host name first')
-      return
-    }
-
-    if (!window.confirm('Delete this hosted game history entry?')) return
-
-    try {
-      await gameAPI.deleteHistory(sessionId, normalizedHost)
-      setHistory((prev) => prev.filter((session) => session.id !== sessionId))
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to delete hosted history')
-    }
-  }
-
-  const handleLogout = () => {
-    clearAuth()
-    router.push('/login?role=host')
-  }
-
-  return (
-    <div className="app-shell py-5 sm:py-8">
-      <div className="page-wrap">
-        <div className="flex items-center justify-between gap-3 mb-8">
-          <Link href="/" className="btn-secondary">
-            <ArrowLeft className="w-5 h-5" />
-            UnAI Quizz
-          </Link>
-
-          <button onClick={handleLogout} className="btn-secondary">
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="card text-center py-10 max-w-md w-full">
+          <p className="text-white/60">Checking host access...</p>
         </div>
+      </div>
+    )
+  }
 
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="section-title">My Quizzes</h1>
-            <p className="section-subtitle">Create and manage your quizzes</p>
+  const handleGenerate = async () => {
+    setError('')
+
+    // Check if either topic or file is provided
+    if (method === 'topic' && !topic.trim()) {
+      setError('Please enter a topic')
+      return
+    }
+    if (method === 'file' && !file) {
+      setError('Please upload a file')
+      return
+    }
+
+    setLoading(true)
+    try {
+      let response
+
+      if (method === 'file' && file) {
+        // Use file if uploaded
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('num_questions', numQuestions.toString())
+        formData.append('difficulty', difficulty)
+        response = await quizAPI.generateFromFile(formData)
+        setQuizTitle(`${file.name.split('.')[0]} Quiz`)
+        setQuizDescription(description)
+      } else if (method === 'topic' && topic) {
+        // Use topic
+        response = await quizAPI.generateFromTopic({
+          topic,
+          num_questions: numQuestions,
+          difficulty,
+        })
+        setQuizTitle(`${topic} Quiz`)
+        setQuizDescription(description)
+      }
+
+      const generatedQuestions = (response?.data?.questions || []).map((q: Question) => ({
+        ...q,
+        time_limit: defaultTimeLimit,
+      }))
+      setQuestions(generatedQuestions)
+      setStep('review')
+    } catch (error: any) {
+      console.error('Generation error:', error)
+
+      // Extract error message properly
+      let errorMsg = 'Failed to generate quiz'
+
+      if (error.response?.data) {
+        // Backend error response
+        if (typeof error.response.data.detail === 'string') {
+          errorMsg = error.response.data.detail
+        } else if (Array.isArray(error.response.data.detail)) {
+          // Validation errors from FastAPI
+          errorMsg = error.response.data.detail.map((err: any) =>
+            `${err.loc?.join(' → ') || 'Error'}: ${err.msg}`
+          ).join(', ')
+        } else if (error.response.data.detail) {
+          errorMsg = JSON.stringify(error.response.data.detail)
+        }
+      } else if (error.message) {
+        errorMsg = error.message
+      }
+
+      setError(errorMsg)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpdateQuestion = (index: number, field: string, value: any) => {
+    const updated = [...questions]
+    updated[index] = { ...updated[index], [field]: value }
+    setQuestions(updated)
+  }
+
+  const handleDeleteQuestion = (index: number) => {
+    setQuestions(questions.filter((_, i) => i !== index))
+  }
+
+  const handleSaveAndHost = async () => {
+    if (!quizTitle.trim() || !hostName.trim()) {
+      setError('Please enter quiz title and your name')
+      return
+    }
+    if (questions.length === 0) {
+      setError('Please add at least one question')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      const normalizedHostName = hostName.trim()
+      localStorage.setItem('hostName', normalizedHostName)
+
+      // Create quiz
+      const quizResponse = await quizAPI.create({
+        title: quizTitle,
+        description: quizDescription,
+        created_by: normalizedHostName,
+        questions: questions,
+      })
+
+      // Create game session
+      const gameResponse = await gameAPI.create({
+        quiz_id: quizResponse.data.id,
+        host_name: normalizedHostName,
+      })
+
+      // Redirect to lobby
+      router.push(`/host/lobby?pin=${gameResponse.data.pin}`)
+    } catch (error: any) {
+      setError(error.response?.data?.detail || 'Failed to create quiz')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (step === 'input') {
+    return (
+      <div className="min-h-screen p-4 md:p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-4 mb-8">
+            <button
+              onClick={() => method ? setMethod(null) : router.push('/host')}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              {method ? 'Back' : 'Back to Dashboard'}
+            </button>
           </div>
 
-          <Link href="/host/create" className="btn-primary w-full md:w-auto">
-            <Plus className="w-5 h-5" />
-            New Quiz
-          </Link>
-        </div>
+          <h1 className="text-4xl md:text-5xl font-display font-bold mb-2">Create Quiz</h1>
+          <p className="text-white/60 mb-8">Generate questions using AI from a topic or file</p>
 
+          {/* Error Display */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 mb-6 flex items-start gap-3"
+            >
+              <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-red-400 mb-1">Error</p>
+                <p className="text-sm text-white/80">{error}</p>
+              </div>
+              <button onClick={() => setError('')} className="text-white/60 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+
+          {!method ? (
+            <div className="grid md:grid-cols-2 gap-6">
+              <motion.button
+                whileHover={{ scale: 1.02, y: -5 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setMethod('topic')}
+                className="card text-left p-8 group hover:border-orange-500/50 transition-all border-2 border-transparent"
+              >
+                <div className="w-14 h-14 bg-gradient-to-br from-red-500 to-orange-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg group-hover:shadow-orange-500/20 transition-all">
+                  <Sparkles className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-3">Write Topic</h2>
+                <p className="text-white/60">Generate questions by simply describing a subject (e.g., "Ancient Rome", "React Hooks").</p>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02, y: -5 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setMethod('file')}
+                className="card text-left p-8 group hover:border-orange-500/50 transition-all border-2 border-transparent"
+              >
+                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center mb-6 shadow-lg group-hover:shadow-orange-500/20 transition-all">
+                  <Upload className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-3">Upload File</h2>
+                <p className="text-white/60">Upload PDFs, PPTX, or documents and let AI extract questions from the content.</p>
+              </motion.button>
+            </div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="card"
+            >
+              {method === 'topic' ? (
+                <div className="mb-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-orange-500 rounded-lg flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">Enter a Topic</h2>
+                      <p className="text-sm text-white/60">Let AI generate questions about any subject</p>
+                    </div>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder="E.g., World War II, Python Programming, Solar System..."
+                    className="input-field"
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div className="mb-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center">
+                      <Upload className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">Upload a File</h2>
+                      <p className="text-sm text-white/60">PDF, PPT, TXT, DOCX, or images (max 10MB)</p>
+                    </div>
+                  </div>
+
+                  <div
+                    {...getRootProps()}
+                    className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all mb-3 ${isDragActive
+                        ? 'border-orange-500 bg-orange-500/10'
+                        : file
+                          ? 'border-green-500/50 bg-green-500/10'
+                          : 'border-white/20 hover:border-white/40'
+                      }`}
+                  >
+                    <input {...getInputProps()} />
+                    <Upload className={`w-12 h-12 mx-auto mb-3 ${file ? 'text-green-400' : 'text-white/40'}`} />
+                    {file ? (
+                      <div>
+                        <p className="text-lg font-semibold mb-1 text-green-400">✓ {file.name}</p>
+                        <p className="text-sm text-white/60">{(file.size / 1024).toFixed(2)} KB</p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setFile(null)
+                          }}
+                          className="mt-3 text-sm text-red-400 hover:text-red-300"
+                        >
+                          Remove file
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-lg mb-2">
+                          {isDragActive ? 'Drop file here' : 'Drag & drop or click to upload'}
+                        </p>
+                        <p className="text-sm text-white/60">
+                          PDF, TXT, PPTX, DOCX, PNG, JPG
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Description Field (for both topic and file) */}
+              <div className="mb-6 pb-6 border-b border-white/10">
+                <label className="block text-sm font-semibold mb-2 text-white/80">
+                  Description (optional)
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Add a brief description for this quiz..."
+                  className="input-field resize-none"
+                  rows={2}
+                />
+                <p className="text-xs text-white/40 mt-1">
+                  This will be saved with your quiz for future reference
+                </p>
+              </div>
+
+              {/* Settings */}
+              <div className="grid md:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Number of Questions</label>
+                  <input
+                    type="number"
+                    value={numQuestions}
+                    onChange={(e) => setNumQuestions(parseInt(e.target.value) || 1)}
+                    min="1"
+                    max="50"
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Difficulty Level</label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-semibold mb-2">Time Per Question (seconds)</label>
+                <input
+                  type="number"
+                  value={defaultTimeLimit}
+                  onChange={(e) => setDefaultTimeLimit(Math.max(1, Math.min(120, parseInt(e.target.value) || 15)))}
+                  min="1"
+                  max="120"
+                  className="input-field"
+                />
+                <p className="text-xs text-white/50 mt-1">
+                  Applied to all generated questions. You can still edit each question later.
+                </p>
+              </div>
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerate}
+                disabled={loading || (method === 'topic' ? !topic.trim() : !file)}
+                className="btn-primary w-full flex items-center justify-center gap-2 py-4 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                    Generating Questions...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    Generate Quiz
+                  </>
+                )}
+              </button>
+            </motion.div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+
+  // Review step
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-5xl mx-auto">
+        <button
+          onClick={() => setStep('input')}
+          className="btn-secondary flex items-center gap-2 mb-8"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Back to Input
+        </button>
+
+        <h1 className="text-4xl font-display font-bold mb-8">Review & Edit Quiz</h1>
+
+        {/* Error Display */}
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 mb-6 flex items-start gap-3"
+          >
+            <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-red-400 mb-1">Error</p>
+              <p className="text-sm text-white/80">{error}</p>
+            </div>
+            <button onClick={() => setError('')} className="text-white/60 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+
+        {/* Quiz Meta */}
         <div className="card mb-6">
-          <label className="text-sm font-semibold text-white/80 mb-2 flex items-center gap-2">
-            <User className="w-4 h-4" />
-            Host Name
-          </label>
           <input
+            type="text"
+            value={quizTitle}
+            onChange={(e) => setQuizTitle(e.target.value)}
+            placeholder="Quiz Title"
+            className="input-field mb-4 text-2xl font-bold"
+          />
+          <textarea
+            value={quizDescription}
+            onChange={(e) => setQuizDescription(e.target.value)}
+            placeholder="Quiz Description (optional)"
+            className="input-field mb-4"
+            rows={2}
+          />
+          <input
+            type="text"
             value={hostName}
-            onChange={(e) => persistHostName(e.target.value)}
-            placeholder="Enter your host name"
+            onChange={(e) => setHostName(e.target.value)}
+            placeholder="Your Name"
             className="input-field"
           />
         </div>
 
-        {loadingQuizzes ? (
-          <div className="card text-center py-12">
-            <div className="animate-spin w-12 h-12 border-4 border-pink-500 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-white/60">Loading quizzes...</p>
-          </div>
-        ) : quizzes.length === 0 ? (
-          <div className="card text-center py-12 mb-8">
-            <p className="text-white/60 text-lg">No quizzes found for this host. Create your first one.</p>
-          </div>
-        ) : (
-          <div className="space-y-4 mb-10">
-            {quizzes.map((quiz) => (
-              <motion.div key={quiz.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="text-2xl font-semibold truncate">{quiz.title}</h3>
-                    <div className="mt-2 flex flex-wrap gap-4 text-white/60">
-                      <span className="inline-flex items-center gap-1">
-                        {/* Changed CircleHelp to HelpCircle here */}
-                        <HelpCircle className="w-4 h-4" />
-                        {quiz.question_count} questions
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Clock3 className="w-4 h-4" />
-                        {new Date(quiz.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleHostQuiz(quiz.id)}
-                      disabled={actionLoadingId === quiz.id}
-                      className="btn-primary"
-                    >
-                      <Play className="w-4 h-4" />
-                      {actionLoadingId === quiz.id ? 'Hosting...' : 'Host'}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteQuiz(quiz.id)}
-                      className="btn-secondary text-red-300 hover:text-red-200"
-                      title="Delete quiz"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-
-        <div className="mb-4 flex items-center gap-3">
-          <History className="w-6 h-6 text-white/60" />
-          <h2 className="text-2xl font-bold">Hosted Game History</h2>
-        </div>
-
-        {loadingHistory ? (
-          <div className="card text-center py-10">
-            <p className="text-white/60">Loading hosted game history...</p>
-          </div>
-        ) : history.length === 0 ? (
-          <div className="card text-center py-10">
-            <p className="text-white/60">No hosted game sessions yet.</p>
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-4">
-            {history.map((session) => (
-              <div key={session.id} className="card">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-lg font-semibold">{session.quiz_title}</h3>
-                  <span className="text-xs uppercase tracking-wide text-white/50">{session.status}</span>
-                </div>
-                <p className="text-sm text-white/60 mb-2">PIN: {session.pin}</p>
-                <p className="text-xs text-white/50 mb-4">
-                  {session.player_count} players • {new Date(session.created_at).toLocaleString()}
-                </p>
-
+        {/* Questions */}
+        <div className="space-y-4 mb-6">
+          {questions.map((q, index) => (
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+              className="card"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <span className="text-sm font-mono text-white/60">Question {index + 1}</span>
                 <div className="flex gap-2">
-                  <button onClick={() => handleHostQuiz(session.quiz_id)} className="btn-primary flex-1">
-                    <Play className="w-4 h-4" />
-                    Host Again
+                  <button
+                    onClick={() => setEditingIndex(editingIndex === index ? null : index)}
+                    className="p-2 hover:bg-white/10 rounded-lg transition"
+                  >
+                    <Edit className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handleDeleteHostedSession(session.id)}
-                    className="btn-secondary text-red-300 hover:text-red-200"
-                    title="Delete history"
+                    onClick={() => handleDeleteQuestion(index)}
+                    className="p-2 hover:bg-red-500/20 rounded-lg transition"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4 text-red-400" />
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+
+              {editingIndex === index ? (
+                <div className="space-y-3">
+                  <textarea
+                    value={q.question_text}
+                    onChange={(e) => handleUpdateQuestion(index, 'question_text', e.target.value)}
+                    className="input-field"
+                    rows={2}
+                  />
+                  {q.options.map((opt, optIndex) => (
+                    <input
+                      key={optIndex}
+                      type="text"
+                      value={opt}
+                      onChange={(e) => {
+                        const newOptions = [...q.options]
+                        newOptions[optIndex] = e.target.value
+                        handleUpdateQuestion(index, 'options', newOptions)
+                      }}
+                      className="input-field"
+                      placeholder={`Option ${String.fromCharCode(65 + optIndex)}`}
+                    />
+                  ))}
+                  <select
+                    value={q.correct_answer}
+                    onChange={(e) => handleUpdateQuestion(index, 'correct_answer', e.target.value)}
+                    className="input-field"
+                  >
+                    {q.options.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={q.time_limit}
+                    onChange={(e) => handleUpdateQuestion(index, 'time_limit', parseInt(e.target.value))}
+                    className="input-field"
+                    min="1"
+                    max="120"
+                    placeholder="Time limit (seconds)"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <p className="text-lg font-semibold mb-3">{q.question_text}</p>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {q.options.map((opt, i) => (
+                      <div
+                        key={i}
+                        className={`p-3 rounded-lg ${opt === q.correct_answer
+                            ? 'bg-green-500/20 border border-green-500/50'
+                            : 'bg-white/5'
+                          }`}
+                      >
+                        <span className="font-mono text-sm mr-2">{String.fromCharCode(65 + i)}</span>
+                        {opt}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-white/60">Time: {q.time_limit}s</p>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div className="card">
+          <button
+            onClick={handleSaveAndHost}
+            disabled={loading}
+            className="btn-primary w-full flex items-center justify-center gap-2 py-4 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <>
+                <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Play className="w-5 h-5" />
+                Save & Host Game
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )
