@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Live GenAI Quiz Platform',
   description: 'Real-time quiz platform powered by AI',
 }
-
+ 
 export default function RootLayout({
   children, 
 }: {
