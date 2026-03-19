@@ -68,5 +68,10 @@ class Settings(BaseSettings):
         case_sensitive = True
         extra = "ignore"  # Prevents crash if .env has unused keys (like old OpenAI config)
 
+@lru_cache()
+def get_settings():
+    return Settings()
 
+
+settings = get_settings()
 
