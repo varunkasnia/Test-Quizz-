@@ -8,7 +8,7 @@ import { authAPI } from '@/lib/api'
 import { saveAuth } from '@/lib/auth'
 
 export default function LoginPage() {
-  const router = useRouter()
+  const router = useRouter() 
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
