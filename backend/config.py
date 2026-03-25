@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings 
-from pydantic import field_validator
+from pydantic import field_validator 
 from functools import lru_cache
 from typing import List, Optional
 import json
