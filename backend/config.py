@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import List, Optional     
 import json 
   
-class Settings(BaseSettings):
+class Settings(BaseSettings): 
     # Application
     APP_NAME: str = "Live GenAI Quiz Platform"
     APP_VERSION: str = "1.0.0"
