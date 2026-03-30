@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import  List, Optional
 from database import get_db, Quiz, Question  
 from schemas import QuizCreateRequest, QuizResponse, AIGenerateRequest, AIGeneratedQuestions, QuestionResponse
 from services.ai_service import generate_quiz_from_text, generate_quiz_from_topic
