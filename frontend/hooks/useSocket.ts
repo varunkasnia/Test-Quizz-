@@ -27,7 +27,7 @@ export const useSocket = () => {
     return () => {
       disconnectSocket();
     };
-  }, []);
+  }, []); 
 
   const emit = useCallback((event: string, data: any) => {
     if (socket) {
