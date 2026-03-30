@@ -3,7 +3,7 @@ from pydantic import field_validator
 from functools import lru_cache
 from typing import List, Optional     
 import json 
-   
+    
 class Settings(BaseSettings): 
     # Application 
     APP_NAME: str = "Live GenAI Quiz Platform"
