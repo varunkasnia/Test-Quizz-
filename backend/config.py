@@ -5,7 +5,7 @@ from typing import List, Optional
 import json 
   
 class Settings(BaseSettings): 
-    # Application
+    # Application 
     APP_NAME: str = "Live GenAI Quiz Platform"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
