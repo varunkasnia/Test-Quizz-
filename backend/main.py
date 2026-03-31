@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     # Shutdown: Clean up connections
     logger.info("🛑 Shutting down...")
 
-app = FastAPI(
+app = FastAPI
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     lifespan=lifespan
