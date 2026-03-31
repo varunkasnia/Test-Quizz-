@@ -6,7 +6,7 @@ from datetime import datetime
 class QuestionSchema(BaseModel):
     question_text: str = Field(..., min_length=5)
     options: List[str] = Field(..., min_items=2, max_items=6)
-    correct_answer: str
+    correct_answer: str 
     time_limit: int = Field(default=30, ge=5, le=120)
 
 
