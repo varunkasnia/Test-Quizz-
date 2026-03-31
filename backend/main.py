@@ -7,7 +7,7 @@ import socketio
 import json 
 import logging 
 
-from config import settings
+from config import settings 
 from database import init_db
 from routes import quiz, game, export, auth
 from services.socket_manager import sio
