@@ -77,7 +77,7 @@ async def health_check():
         "environment": settings.ENV # Helpful for deployment debugging
     }
 
-socket_app = socketio.ASGIApp(
+socket_app = socketio.ASGIApp( 
     sio,
     other_asgi_app=app,
     socketio_path="socket.io"
