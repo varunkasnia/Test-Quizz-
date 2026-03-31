@@ -10,7 +10,7 @@ class QuestionSchema(BaseModel):
     time_limit: int = Field(default=30, ge=5, le=120)
 
 
-class QuizCreateRequest(BaseModel):
+class QuizCreateRequest(BaseModel): 
     title: str = Field(..., min_length=3, max_length=255)
     description: Optional[str] = None
     created_by: str = Field(..., min_length=1, max_length=100)
