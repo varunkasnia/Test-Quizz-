@@ -3,7 +3,7 @@ export type UserRole = 'host' | 'joiner'
 export interface AuthUser {  
   id: number  
   full_name: string 
-  email: string
+  email: string 
   role: UserRole 
   created_at: string
 }
