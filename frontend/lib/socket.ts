@@ -14,7 +14,7 @@ export const getSocket = (): Socket => {
       // 3. Explicitly define the path to match your FastAPI wrapper
       path: "/socket.io/", 
       
-      reconnection: true,
+      reconnection: true, 
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
