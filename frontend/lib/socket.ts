@@ -10,7 +10,7 @@ export const getSocket = (): Socket => {
     socket = io(WS_URL, {
       // 2. CRITICAL: Force websocket only for Render/Cloud stability
       transports: ['websocket'], 
-      
+       
       // 3. Explicitly define the path to match your FastAPI wrapper
       path: "/socket.io/", 
       
