@@ -6,7 +6,7 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8000';
 let socket: Socket | null = null;
 
 export const getSocket = (): Socket => {
-  if (!socket) {
+  if (!socket) { 
     socket = io(WS_URL, {
       // 2. CRITICAL: Force websocket only for Render/Cloud stability
       transports: ['websocket'], 
