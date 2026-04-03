@@ -4,7 +4,7 @@ export interface AuthUser {
   id: number
   full_name: string
   email: string
-  role: UserRole
+  role: UserRole 
   created_at: string
 }
 
