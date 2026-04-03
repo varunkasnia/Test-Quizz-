@@ -12,7 +12,7 @@ export const getSocket = (): Socket => {
       transports: ['websocket'], 
        
       // 3. Explicitly define the path to match your FastAPI wrapper
-      path: "/socket.io/", 
+      path: "/socket.io/",  
       
       reconnection: true, 
       reconnectionDelay: 1000, 
