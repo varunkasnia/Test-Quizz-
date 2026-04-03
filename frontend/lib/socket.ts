@@ -15,7 +15,7 @@ export const getSocket = (): Socket => {
       path: "/socket.io/", 
       
       reconnection: true, 
-      reconnectionDelay: 1000,
+      reconnectionDelay: 1000, 
       reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
       timeout: 20000,
