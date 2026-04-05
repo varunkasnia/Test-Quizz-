@@ -5,7 +5,7 @@ import { getSocket, disconnectSocket } from  '@/lib/socket';
 export const useSocket = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
- 
+  
   useEffect(() => {
     const socketInstance = getSocket();
     setSocket(socketInstance);
