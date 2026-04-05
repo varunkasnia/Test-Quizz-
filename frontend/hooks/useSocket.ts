@@ -9,7 +9,7 @@ export const useSocket = () => {
   useEffect(() => {  
     const socketInstance = getSocket();
     setSocket(socketInstance);
-
+ 
      
     socketInstance.on('connect', () => {
       console.log('Socket connected');
