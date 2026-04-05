@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Socket } from 'socket.io-client'; 
 import { getSocket, disconnectSocket } from  '@/lib/socket';  
                 
-export const useSocket = () => {      
+export const useSocket = () => {       
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   
