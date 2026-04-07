@@ -2,4 +2,4 @@
 / <reference types="next/image-types/global" />
          
 // NOTE: This file should not be edite d  
-// see https://nextjs.org/docs/app/building-your-application/configuring/typescript for mor
+// see https://nextjs.org/docs/app/building-your-application/configuring/typescript for mo
