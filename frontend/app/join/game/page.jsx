@@ -189,20 +189,27 @@ export default function PlayerGamePage() {
     try {
       const results = []
       for (const tc of sampleCases) {
-        const res = await fetch('https://emkc.org/api/v2/piston/execute', {
+        const res = await fetch('/api/game/code/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            language: PISTON_LANGUAGES[codeLanguage]?.language || 'python',
-            version: PISTON_LANGUAGES[codeLanguage]?.version || '3.10.0',
-            files: [{ content: codeValue }],
-            stdin: tc.input || ''
+            code: codeValue,
+            language: codeLanguage,
+            test_input: tc.input || ''
           })
         })
         const data = await res.json()
-        const actual = (data.run?.stdout || '').trim()
+        const actual = (data.stdout || '').trim()
         const expected = String(tc.expected_output || '').trim()
-        results.push({ passed: actual === expected, input: tc.input, expected, actual, stderr: data.run?.stderr || '' })
+        results.push({ 
+          passed: actual === expected && !data.error, 
+          input: tc.input, 
+          expected, 
+          actual, 
+          stderr: data.stderr || '',
+          index: results.length + 1,
+          is_sample: true
+        })
       }
       setRunResults(results)
     } catch (e) {
