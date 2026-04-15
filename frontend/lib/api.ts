@@ -75,6 +75,12 @@ export const authAPI = {
   me: () => api.get('/api/auth/me'),
 };
 
+// Code execution endpoints
+export const codeAPI = {
+  submit: (data: { player_id: number; question_id: number; code: string; language: string; time_taken: number }) =>
+    api.post('/api/game/code/submit', data),
+};
+
 // Export endpoints
 export const exportAPI = {
   csv: (pin: string) => `${API_URL}/api/export/${pin}/csv`,
