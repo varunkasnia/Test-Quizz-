@@ -142,7 +142,10 @@ export default function HostGamePage() {
       question_data: {
         id: currentQuestion.id,
         question_text: currentQuestion.question_text,
+        question_type: currentQuestion.question_type,
         options: currentQuestion.options,
+        test_cases: currentQuestion.test_cases,
+        boilerplate_code: currentQuestion.boilerplate_code,
         time_limit: currentQuestion.time_limit || 30,
       },
     });
