@@ -34,7 +34,8 @@ async def create_quiz(quiz_data: QuizCreateRequest, db: Session = Depends(get_db
                 time_limit=q_data.time_limit,
                 order=idx,
                 question_type=q_data.question_type,
-                test_cases=q_data.test_cases
+                test_cases=q_data.test_cases,
+                boilerplate_code=q_data.boilerplate_code
             )
             db.add(question)
         
@@ -169,7 +170,8 @@ async def get_quiz(quiz_id: int, db: Session = Depends(get_db)):
                 "time_limit": q.time_limit,
                 "order": q.order,
                 "question_type": q.question_type,
-                "test_cases": q.test_cases
+                "test_cases": q.test_cases,
+                "boilerplate_code": q.boilerplate_code
             }
             for q in questions
         ]
@@ -205,6 +207,8 @@ async def update_question(
         question.question_type = question_data["question_type"]
     if "test_cases" in question_data:
         question.test_cases = question_data["test_cases"]
+    if "boilerplate_code" in question_data:
+        question.boilerplate_code = question_data["boilerplate_code"]
     
     db.commit()
     
