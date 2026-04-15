@@ -234,6 +234,7 @@ async def next_question(sid, data):
         'time_limit': question_data['time_limit'],
         'sample_test_cases': sample_test_cases,   # Only visible sample cases
         'total_test_cases': total_test_cases,       # So user knows how many hidden
+        'boilerplate_code': question_data.get('boilerplate_code'),  # Starter code for code questions
         # hidden test_cases NOT sent
     }
 
