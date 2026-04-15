@@ -77,6 +77,8 @@ export const authAPI = {
 
 // Code execution endpoints
 export const codeAPI = {
+  run: (data: { code: string; language: string; test_input: string }) =>
+    api.post('/api/game/code/run', data),
   submit: (data: { player_id: number; question_id: number; code: string; language: string; time_taken: number }) =>
     api.post('/api/game/code/submit', data),
 };
