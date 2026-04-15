@@ -9,7 +9,7 @@ from datetime import datetime
 # Create Socket.IO server
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://quizz-app-nine-azure.vercel.app"],
+    cors_allowed_origins="*",
     allow_upgrades=True,
     logger=True,
     engineio_logger=True
