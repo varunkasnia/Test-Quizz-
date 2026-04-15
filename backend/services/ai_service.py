@@ -21,11 +21,20 @@ QUIZ_JSON_SCHEMA = """
     "questions": [
         {
             "question_type": "mcq", // Use "mcq" for multiple choice, "code" for programming problems.
-            "question_text": "The actual question text or code problem description?",
+            "question_text": "The actual question text or code problem description with constraints and example I/O?",
             "options": ["Option A", "Option B", "Option C", "Option D"], // Only if question_type is "mcq"
             "correct_answer": "Option A", // Only if question_type is "mcq"
-            "test_cases": [{"input": "...", "expected_output": "..."}], // Only if question_type is "code". Array of multiple test case dictionaries.
-            "explanation": "Why this answer is correct or approach to code.",
+            "test_cases": [
+                {"input": "...", "expected_output": "...", "is_sample": true},  // First 3 are visible sample cases (like LeetCode)
+                {"input": "...", "expected_output": "...", "is_sample": true},
+                {"input": "...", "expected_output": "...", "is_sample": true},
+                {"input": "...", "expected_output": "...", "is_sample": false}, // Remaining 5 are hidden evaluation cases
+                {"input": "...", "expected_output": "...", "is_sample": false},
+                {"input": "...", "expected_output": "...", "is_sample": false},
+                {"input": "...", "expected_output": "...", "is_sample": false},
+                {"input": "...", "expected_output": "...", "is_sample": false}
+            ], // Only if question_type is "code". MUST have EXACTLY 8 test cases!
+            "explanation": "Approach/algorithm to solve the code problem.",
             "time_limit": 30 // Suggest 30-120 for mcq, 300-600 for code
         }
     ]
