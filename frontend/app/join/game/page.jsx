@@ -2,16 +2,33 @@
 export const dynamic = 'force-dynamic'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { getSocket } from '@/lib/socket'
-import { gameAPI } from '@/lib/api'
+import { gameAPI, codeAPI } from '@/lib/api'
+import dynamic_import from 'next/dynamic'
+
+// Dynamically import Monaco to avoid SSR issues
+const Editor = dynamic_import(() => import('@monaco-editor/react'), { ssr: false })
+
+const PISTON_LANGUAGES = {
+  python: { language: 'python', version: '3.10.0' },
+  cpp: { language: 'c++', version: '10.2.0' },
+  java: { language: 'java', version: '15.0.2' },
+  javascript: { language: 'javascript', version: '18.15.0' },
+  c: { language: 'c', version: '10.2.0' },
+  csharp: { language: 'csharp', version: '6.12.0' },
+  go: { language: 'go', version: '1.16.2' },
+  rust: { language: 'rust', version: '1.68.2' },
+  ruby: { language: 'ruby', version: '3.0.1' },
+  swift: { language: 'swift', version: '5.3.3' },
+}
 
 export default function PlayerGamePage() {
   const router = useRouter()
   const [pin, setPin] = useState('')
   const [pinResolved, setPinResolved] = useState(false)
-  const [status, setStatus] = useState('waiting') // waiting, playing
+  const [status, setStatus] = useState('waiting')
   const [playerName, setPlayerName] = useState('')
   const [error, setError] = useState('')
   const [connected, setConnected] = useState(false)
@@ -22,60 +39,16 @@ export default function PlayerGamePage() {
   const [submitting, setSubmitting] = useState(false)
   const [certificateStatus, setCertificateStatus] = useState(null)
   const [loadingCertificate, setLoadingCertificate] = useState(false)
+
+  // Code editor states
   const [codeLanguage, setCodeLanguage] = useState('python')
   const [codeValue, setCodeValue] = useState('')
-  const [testResults, setTestResults] = useState(null)
+  const [runResults, setRunResults] = useState(null)   // sample test case results
+  const [submitResults, setSubmitResults] = useState(null) // all 8 hidden test case results
   const [runningCode, setRunningCode] = useState(false)
-
-  const PISTON_LANGUAGES = {
-    python: { language: 'python', version: '3.10.0' },
-    cpp: { language: 'c++', version: '10.2.0' },
-    java: { language: 'java', version: '15.0.2' },
-    javascript: { language: 'javascript', version: '18.15.0' },
-    c: { language: 'c', version: '10.2.0' },
-    csharp: { language: 'csharp', version: '6.12.0' },
-    go: { language: 'go', version: '1.16.2' },
-    rust: { language: 'rust', version: '1.68.2' },
-    ruby: { language: 'ruby', version: '3.0.1' },
-    swift: { language: 'swift', version: '5.3.3' }
-  }
-
-  const runTests = async () => {
-    if (!question || !question.test_cases || runningCode || timeLeft <= 0) return
-    setRunningCode(true)
-    try {
-      const results = []
-      for (const tc of question.test_cases) {
-        const payload = {
-          language: PISTON_LANGUAGES[codeLanguage]?.language || 'python',
-          version: PISTON_LANGUAGES[codeLanguage]?.version || '3.10.0',
-          files: [{ content: codeValue }],
-          stdin: tc.input
-        }
-        const res = await fetch('https://emkc.org/api/v2/piston/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-        const data = await res.json()
-        const output = (data.run?.stdout || '').trim()
-        const passed = output === String(tc.expected_output).trim()
-        results.push({ passed, input: tc.input, expected: tc.expected_output, actual: output, error: data.run?.stderr })
-      }
-      setTestResults(results)
-      
-      const allPassed = results.every(r => r.passed)
-      if (allPassed) {
-         setSelectedOption("CODE_PASSED")
-      } else {
-         setSelectedOption(null)
-      }
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setRunningCode(false)
-    }
-  }
+  const [submittingCode, setSubmittingCode] = useState(false)
+  const [activeTab, setActiveTab] = useState('problem') // 'problem' | 'results'
+  const startTimeRef = useRef(Date.now())
 
   useEffect(() => {
     const value = new URLSearchParams(window.location.search).get('pin') || ''
@@ -86,11 +59,9 @@ export default function PlayerGamePage() {
   useEffect(() => {
     if (!question || status !== 'playing') return
     if (timeLeft <= 0) return
-
     const timer = setInterval(() => {
       setTimeLeft((prev) => Math.max(0, prev - 1))
     }, 1000)
-
     return () => clearInterval(timer)
   }, [question, status, timeLeft])
 
@@ -100,34 +71,19 @@ export default function PlayerGamePage() {
     const storedName = localStorage.getItem('playerName')
     const storedPlayerId = localStorage.getItem('playerId')
 
-    if (!pin) {
-      router.push('/join')
-      return
-    }
+    if (!pin) { router.push('/join'); return }
+    if (!storedName || !storedPlayerId) { router.push('/join'); return }
 
     if (storedName) setPlayerName(storedName)
-    if (!storedName || !storedPlayerId) {
-      router.push('/join')
-      return
-    }
 
     const socket = getSocket()
 
     const onConnect = () => {
       setConnected(true)
-      socket.emit('join_lobby', {
-        pin,
-        name: storedName,
-        player_id: Number(storedPlayerId),
-      })
+      socket.emit('join_lobby', { pin, name: storedName, player_id: Number(storedPlayerId) })
     }
-
     const onDisconnect = () => setConnected(false)
-
-    const onGameStarted = () => {
-      setStatus('playing')
-    }
-
+    const onGameStarted = () => setStatus('playing')
     const onQuestionUpdate = (payload) => {
       setStatus('playing')
       setQuestion(payload)
@@ -136,16 +92,13 @@ export default function PlayerGamePage() {
       setAnswerSubmitted(false)
       setSubmitting(false)
       setCodeValue('')
-      setTestResults(null)
+      setRunResults(null)
+      setSubmitResults(null)
+      setActiveTab('problem')
+      startTimeRef.current = Date.now()
     }
-
-    const onSocketError = (payload) => {
-      setError(payload?.message || 'Socket error')
-    }
-
-    const onGameEnded = () => {
-      setStatus('ended')
-    }
+    const onSocketError = (payload) => setError(payload?.message || 'Socket error')
+    const onGameEnded = () => setStatus('ended')
 
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
@@ -154,9 +107,7 @@ export default function PlayerGamePage() {
     socket.on('game_ended', onGameEnded)
     socket.on('error', onSocketError)
 
-    if (socket.connected) {
-      onConnect()
-    }
+    if (socket.connected) onConnect()
 
     return () => {
       socket.off('connect', onConnect)
@@ -168,40 +119,86 @@ export default function PlayerGamePage() {
     }
   }, [pin, pinResolved, router])
 
+  // Run code against SAMPLE test cases only (client-side, via Piston)
+  const handleRun = async () => {
+    if (!question || runningCode || timeLeft <= 0) return
+    const sampleCases = question.sample_test_cases || []
+    if (!sampleCases.length) return
+    setRunningCode(true)
+    setActiveTab('results')
+    try {
+      const results = []
+      for (const tc of sampleCases) {
+        const res = await fetch('https://emkc.org/api/v2/piston/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            language: PISTON_LANGUAGES[codeLanguage]?.language || 'python',
+            version: PISTON_LANGUAGES[codeLanguage]?.version || '3.10.0',
+            files: [{ content: codeValue }],
+            stdin: tc.input || ''
+          })
+        })
+        const data = await res.json()
+        const actual = (data.run?.stdout || '').trim()
+        const expected = String(tc.expected_output || '').trim()
+        results.push({
+          passed: actual === expected,
+          input: tc.input, expected, actual,
+          stderr: data.run?.stderr || '',
+          isSample: true
+        })
+      }
+      setRunResults(results)
+    } catch (e) {
+      setError('Failed to run code. Check connection.')
+    } finally {
+      setRunningCode(false)
+    }
+  }
+
+  // Submit code against ALL hidden test cases (server-side)
+  const handleCodeSubmit = async () => {
+    if (!question || submittingCode || answerSubmitted || timeLeft <= 0) return
+    const playerId = Number(localStorage.getItem('playerId'))
+    const questionId = question?.question_id
+    if (!playerId || !questionId) return
+    const timeTaken = Math.max(0, (Date.now() - startTimeRef.current) / 1000)
+
+    setSubmittingCode(true)
+    setActiveTab('results')
+    try {
+      const res = await codeAPI.submit({
+        player_id: playerId,
+        question_id: questionId,
+        code: codeValue,
+        language: codeLanguage,
+        time_taken: timeTaken,
+      })
+      setSubmitResults(res.data)
+      setAnswerSubmitted(true)
+      // Notify socket
+      getSocket().emit('submit_answer', { pin, player_id: playerId, question_id: questionId, answer: `CODE:${codeLanguage}`, time_taken: timeTaken })
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Submission failed')
+    } finally {
+      setSubmittingCode(false)
+    }
+  }
+
+  // Submit MCQ answer
   const handleSubmitAnswer = async () => {
     if (!question || answerSubmitted || submitting || selectedOption === null || timeLeft <= 0) return
-
-    const playerIdRaw = localStorage.getItem('playerId')
-    const playerId = Number(playerIdRaw)
+    const playerId = Number(localStorage.getItem('playerId'))
     const questionId = question?.question_id
-
-    if (!playerId || !questionId) {
-      setError('Missing player or question info')
-      return
-    }
-
+    if (!playerId || !questionId) return
     const elapsed = Math.max(0, (question.time_limit || 30) - timeLeft)
 
     setSubmitting(true)
     try {
-      const answerValue = question.question_type === 'code' ? codeValue : String(question.options[selectedOption])
-      await gameAPI.submitAnswer({
-        player_id: playerId,
-        question_id: questionId,
-        answer: answerValue,
-        time_taken: elapsed,
-      })
-
+      await gameAPI.submitAnswer({ player_id: playerId, question_id: questionId, answer: String(question.options[selectedOption]), time_taken: elapsed })
       setAnswerSubmitted(true)
-
-      const socket = getSocket()
-      socket.emit('submit_answer', {
-        pin,
-        player_id: playerId,
-        question_id: questionId,
-        answer: answerValue,
-        time_taken: elapsed,
-      })
+      getSocket().emit('submit_answer', { pin, player_id: playerId, question_id: questionId, answer: String(question.options[selectedOption]), time_taken: elapsed })
     } catch (err) {
       setError(err?.response?.data?.detail || 'Failed to submit answer')
     } finally {
@@ -211,198 +208,263 @@ export default function PlayerGamePage() {
 
   useEffect(() => {
     if (status !== 'ended' || !pin) return
-
     const playerId = Number(localStorage.getItem('playerId'))
     if (!playerId) return
-
     let active = true
     setLoadingCertificate(true)
-
     gameAPI.getCertificateStatus(pin, playerId)
-      .then((response) => {
-        if (!active) return
-        setCertificateStatus(response.data || null)
-      })
-      .catch(() => {
-        if (!active) return
-        setCertificateStatus(null)
-      })
-      .finally(() => {
-        if (active) setLoadingCertificate(false)
-      })
-
-    return () => {
-      active = false
-    }
+      .then((r) => { if (active) setCertificateStatus(r.data || null) })
+      .catch(() => { if (active) setCertificateStatus(null) })
+      .finally(() => { if (active) setLoadingCertificate(false) })
+    return () => { active = false }
   }, [status, pin])
 
   if (!pinResolved) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="card text-center py-10 max-w-md w-full">
-          <p className="text-white/60">Loading game...</p>
-        </div>
-      </div>
-    )
+    return <div className="min-h-screen flex items-center justify-center"><div className="card text-center py-10 max-w-md w-full"><p className="text-white/60">Loading game...</p></div></div>
   }
 
+  const isCode = question?.question_type === 'code'
+  const sampleCases = question?.sample_test_cases || []
+  const totalCases = question?.total_test_cases || 0
+  const hiddenCount = totalCases - sampleCases.length
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-500/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-orange-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
+    <div className="min-h-screen bg-[#0d1117] text-white flex flex-col">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#161b22]">
+        <span className="font-bold text-sm font-mono tracking-widest text-white/60">{pin}</span>
+        <span className="text-sm font-semibold text-white">{playerName}</span>
+        {question && (
+          <span className={`text-sm font-mono px-3 py-0.5 rounded border ${timeLeft <= 10 ? 'text-red-400 border-red-400/50 animate-pulse' : 'text-white/70 border-white/20'}`}>
+            {timeLeft}s
+          </span>
+        )}
       </div>
 
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="z-10 max-w-2xl w-full card"
-      >
-        <div className="mb-6 text-center">
-          <h2 className="text-white/60 text-sm uppercase tracking-widest mb-2">You are in!</h2>
-          <h1 className="text-3xl font-bold text-white mb-2">{playerName}</h1>
-          <div className="text-xs text-white/60 font-mono">{pin}</div>
-        </div>
-
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 45px)' }}>
         {status === 'ended' ? (
-          <div className="bg-white/10 p-5 rounded-lg border border-white/10 text-center">
-            <h3 className="text-xl font-semibold mb-1">Game ended</h3>
-            <p className="text-white/70">The host has ended the quiz.</p>
-            {loadingCertificate ? (
-              <p className="text-white/60 text-sm mt-3">Checking certificate eligibility...</p>
-            ) : certificateStatus ? (
-              <div className="mt-4">
-                <p className="text-sm text-white/80">
-                  Score: {certificateStatus.accuracy}%
-                </p>
-                {certificateStatus.game_finished && certificateStatus.template_uploaded && certificateStatus.eligible ? (
-                  <a
-                    href={gameAPI.downloadCertificateUrl(pin, certificateStatus.player_id)}
-                    className="btn-primary inline-block mt-3 px-5 py-2"
-                    download
-                  >
-                    Download Certificate
-                  </a>
-                ) : null}
-              </div>
-            ) : null}
+          <div className="flex-1 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="card max-w-md w-full text-center">
+              <h2 className="text-2xl font-bold mb-2">Quiz Ended 🎉</h2>
+              <p className="text-white/60 mb-4">The host has ended the quiz.</p>
+              {loadingCertificate ? <p className="text-white/60 text-sm">Checking certificate eligibility...</p> : (
+                certificateStatus?.game_finished && certificateStatus?.template_uploaded && certificateStatus?.eligible ? (
+                  <a href={gameAPI.downloadCertificateUrl(pin, certificateStatus.player_id)} className="btn-primary inline-block mt-3 px-5 py-2" download>Download Certificate</a>
+                ) : null
+              )}
+            </motion.div>
           </div>
         ) : question ? (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold">Question {Number(question.index || 0) + 1}</h3>
-              <div className="text-sm font-mono px-3 py-1 rounded bg-white/10 border border-white/20">{timeLeft}s</div>
-            </div>
+          isCode ? (
+            // LeetCode Layout: left panel = problem, right panel = editor + test results
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left: Problem Description */}
+              <div className="w-2/5 flex flex-col border-r border-white/10 overflow-y-auto bg-[#0d1117]">
+                {/* Tabs */}
+                <div className="flex border-b border-white/10">
+                  {['problem', 'results'].map(tab => (
+                    <button key={tab} onClick={() => setActiveTab(tab)}
+                      className={`px-5 py-2 text-sm font-medium capitalize transition ${activeTab === tab ? 'text-white border-b-2 border-blue-500' : 'text-white/50 hover:text-white/80'}`}>
+                      {tab === 'results' ? `Results` : 'Problem'}
+                    </button>
+                  ))}
+                </div>
 
-            <div className="bg-white text-slate-900 p-5 rounded-xl font-semibold text-lg mb-4">
-              {question.question_text}
-            </div>
+                <div className="p-5 flex-1 overflow-y-auto">
+                  {activeTab === 'problem' ? (
+                    <>
+                      <h2 className="text-lg font-bold mb-3 text-white">Q{Number(question.index || 0) + 1}. Code Problem</h2>
+                      <div className="text-white/85 text-sm leading-relaxed whitespace-pre-wrap mb-5">{question.question_text}</div>
+                      
+                      {/* Sample test cases (visible like LeetCode) */}
+                      {sampleCases.length > 0 && (
+                        <div className="mt-4">
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-white/50 mb-3">Sample Test Cases</h3>
+                          {sampleCases.map((tc, i) => (
+                            <div key={i} className="mb-4 bg-[#1c2128] rounded-lg p-3 text-xs font-mono">
+                              <div className="text-white/50 mb-1">Example {i + 1}</div>
+                              <div className="mb-1"><span className="text-white/50">Input: </span><span className="text-green-300">{String(tc.input)}</span></div>
+                              <div><span className="text-white/50">Output: </span><span className="text-blue-300">{String(tc.expected_output)}</span></div>
+                            </div>
+                          ))}
+                          {hiddenCount > 0 && (
+                            <p className="text-xs text-white/40 italic">+ {hiddenCount} hidden test cases evaluated on Submit</p>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    // Results tab
+                    <div>
+                      {submitResults ? (
+                        <>
+                          {/* Summary banner */}
+                          <div className={`rounded-lg p-4 mb-4 border ${submitResults.pass_rate === 1 ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+                            <div className={`text-xl font-bold ${submitResults.pass_rate === 1 ? 'text-green-400' : 'text-red-400'}`}>
+                              {submitResults.pass_rate === 1 ? '✓ Accepted' : '✗ Wrong Answer'}
+                            </div>
+                            <div className="text-sm text-white/60 mt-1">
+                              Passed {submitResults.passed}/{submitResults.total} test cases · {submitResults.points_earned} pts
+                            </div>
+                          </div>
+                          {/* Per-case results */}
+                          {submitResults.results.map((r, i) => (
+                            <div key={i} className={`mb-3 rounded-lg p-3 text-xs font-mono border-l-2 ${r.passed ? 'border-green-500 bg-green-500/5' : 'border-red-500 bg-red-500/5'}`}>
+                              <div className={`font-bold mb-1 ${r.passed ? 'text-green-400' : 'text-red-400'}`}>
+                                {r.passed ? '✓' : '✗'} Case {r.index} {r.is_sample ? '(Sample)' : '(Hidden)'}
+                              </div>
+                              {!r.passed && (
+                                <div className="space-y-0.5 text-white/60">
+                                  {r.input !== 'Hidden' && <div>Input: {r.input}</div>}
+                                  {r.expected !== 'Hidden' && <div>Expected: {r.expected}</div>}
+                                  <div>Got: {r.actual || r.error || 'No output'}</div>
+                                  {r.stderr && <div className="text-red-400">Error: {r.stderr}</div>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </>
+                      ) : runResults ? (
+                        <>
+                          <h3 className="text-sm font-semibold mb-3 text-white">Sample Test Results</h3>
+                          {runResults.map((r, i) => (
+                            <div key={i} className={`mb-3 rounded-lg p-3 text-xs font-mono border-l-2 ${r.passed ? 'border-green-500 bg-green-500/5' : 'border-red-500 bg-red-500/5'}`}>
+                              <div className={`font-bold mb-1 ${r.passed ? 'text-green-400' : 'text-red-400'}`}>
+                                {r.passed ? '✓ Passed' : '✗ Failed'} — Case {i + 1}
+                              </div>
+                              <div className="space-y-0.5 text-white/60">
+                                <div>Input: <span className="text-white/80">{r.input}</span></div>
+                                <div>Expected: <span className="text-blue-300">{r.expected}</span></div>
+                                <div>Got: <span className={r.passed ? 'text-green-300' : 'text-red-300'}>{r.actual || 'No output'}</span></div>
+                                {r.stderr && <div className="text-red-400">stderr: {r.stderr}</div>}
+                              </div>
+                            </div>
+                          ))}
+                          <p className="text-xs text-white/40 mt-3 italic">These are sample cases only. Submit to run all {totalCases} test cases.</p>
+                        </>
+                      ) : (
+                        <p className="text-white/40 text-sm italic text-center mt-10">Run or Submit code to see results here.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
 
-            {question.question_type === 'code' ? (
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-semibold">Write Code</span>
-                  <select 
-                    className="input-field py-1 h-8 w-32 min-h-0 text-sm bg-white/10"
+              {/* Right: Editor + action bar */}
+              <div className="flex-1 flex flex-col bg-[#1e1e1e]">
+                {/* Editor toolbar */}
+                <div className="flex items-center justify-between px-3 py-2 bg-[#252526] border-b border-white/10">
+                  <select
+                    className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/20 outline-none"
                     value={codeLanguage}
                     onChange={(e) => setCodeLanguage(e.target.value)}
                     disabled={answerSubmitted || timeLeft <= 0}
                   >
                     {Object.keys(PISTON_LANGUAGES).map(lang => (
-                      <option key={lang} value={lang}>{lang}</option>
+                      <option key={lang} value={lang}>{lang.charAt(0).toUpperCase() + lang.slice(1)}</option>
                     ))}
                   </select>
+                  <div className="text-xs text-white/40">Monaco Editor · VS Dark</div>
                 </div>
-                <textarea
-                  className="w-full h-48 input-field font-mono text-sm bg-black/60 resize-none mb-3"
-                  value={codeValue}
-                  onChange={(e) => setCodeValue(e.target.value)}
-                  disabled={answerSubmitted || timeLeft <= 0}
-                  placeholder={`Write your ${codeLanguage} code here...`}
-                />
-                
-                <button 
-                  onClick={runTests}
-                  disabled={runningCode || answerSubmitted || timeLeft <= 0}
-                  className="btn-secondary w-full mb-4"
-                >
-                  {runningCode ? 'Running Test Cases...' : 'Run Code against Test Cases'}
-                </button>
 
-                {testResults && (
-                  <div className="bg-black/40 rounded-xl p-3 text-sm font-mono overflow-auto max-h-40 border border-white/10">
-                    <p className="mb-2 font-bold opacity-80">Test Results:</p>
-                    {testResults.map((tr, i) => (
-                      <div key={i} className={`p-2 mb-2 rounded border-l-2 ${tr.passed ? 'border-green-500 bg-green-500/10' : 'border-red-500 bg-red-500/10'}`}>
-                        <div className={`font-bold ${tr.passed ? 'text-green-400' : 'text-red-400'}`}>
-                          Test Case {i+1}: {tr.passed ? 'PASSED' : 'FAILED'}
-                        </div>
-                        {!tr.passed && (
-                           <div className="mt-1 text-xs opacity-70">
-                             <div>Input: {tr.input}</div>
-                             <div>Expected: {tr.expected}</div>
-                             <div>Actual: {tr.actual || tr.error}</div>
-                           </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3">
-                {(question.options || []).map((opt, i) => (
-                  <button
-                    key={`${i}-${String(opt)}`}
-                    type="button"
-                    onClick={() => {
-                      if (answerSubmitted || timeLeft <= 0) return
-                      setSelectedOption(i)
+                {/* Monaco Editor */}
+                <div className="flex-1 min-h-0">
+                  <Editor
+                    height="100%"
+                    language={codeLanguage === 'cpp' ? 'cpp' : codeLanguage === 'csharp' ? 'csharp' : codeLanguage}
+                    theme="vs-dark"
+                    value={codeValue}
+                    onChange={(value) => setCodeValue(value || '')}
+                    options={{
+                      minimap: { enabled: false },
+                      readOnly: answerSubmitted || timeLeft <= 0,
+                      fontSize: 14,
+                      fontFamily: 'JetBrains Mono, Fira Code, monospace',
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      tabSize: 4,
                     }}
-                    disabled={answerSubmitted || timeLeft <= 0}
-                    className={`w-full text-left p-4 rounded-lg border transition ${
-                      selectedOption === i
-                        ? 'bg-red-500/20 border-red-400'
-                        : 'bg-white/10 border-white/20 hover:bg-white/15'
-                    } ${(answerSubmitted || timeLeft <= 0) ? 'opacity-80 cursor-not-allowed' : ''}`}
-                  >
-                    <span className="text-red-300 mr-2">{String.fromCharCode(65 + i)}.</span>
-                    {String(opt)}
-                  </button>
-                ))}
-              </div>
-            )}
+                  />
+                </div>
 
-            <button
-              type="button"
-              onClick={handleSubmitAnswer}
-              disabled={selectedOption === null || answerSubmitted || submitting || timeLeft <= 0}
-              className="btn-primary w-full mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {submitting ? 'Submitting...' : answerSubmitted ? 'Answer Submitted' : 'Submit Answer'}
-            </button>
-
-            {answerSubmitted ? (
-              <div className="mt-3 text-sm rounded-lg p-3 border bg-white/10 border-white/20 text-white/80">
-                Answer submitted. Wait for host to finish this question.
+                {/* Bottom action bar */}
+                <div className="flex items-center justify-between px-4 py-3 bg-[#1a1a2e] border-t border-white/10">
+                  <div className="text-xs text-white/40">
+                    {sampleCases.length} sample · {hiddenCount} hidden cases
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleRun}
+                      disabled={runningCode || answerSubmitted || timeLeft <= 0 || !codeValue.trim()}
+                      className="px-4 py-1.5 text-sm rounded bg-white/10 border border-white/20 hover:bg-white/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {runningCode ? '⏳ Running...' : '▶ Run'}
+                    </button>
+                    <button
+                      onClick={handleCodeSubmit}
+                      disabled={submittingCode || answerSubmitted || timeLeft <= 0 || !codeValue.trim()}
+                      className="px-4 py-1.5 text-sm rounded bg-green-600 hover:bg-green-500 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {submittingCode ? '⏳ Submitting...' : answerSubmitted ? '✓ Submitted' : '↑ Submit'}
+                    </button>
+                  </div>
+                </div>
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : (
+            // MCQ layout
+            <div className="flex-1 flex items-center justify-center p-4">
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-10 max-w-2xl w-full card">
+                <div className="mb-6 text-center">
+                  <h2 className="text-white/60 text-sm uppercase tracking-widest mb-2">You are in!</h2>
+                  <h1 className="text-3xl font-bold text-white mb-2">{playerName}</h1>
+                  <div className="text-xs text-white/60 font-mono">{pin}</div>
+                </div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold">Question {Number(question.index || 0) + 1}</h3>
+                </div>
+                <div className="bg-white text-slate-900 p-5 rounded-xl font-semibold text-lg mb-4">{question.question_text}</div>
+                <div className="grid grid-cols-1 gap-3">
+                  {(question.options || []).map((opt, i) => (
+                    <button key={`${i}-${String(opt)}`} type="button"
+                      onClick={() => { if (answerSubmitted || timeLeft <= 0) return; setSelectedOption(i) }}
+                      disabled={answerSubmitted || timeLeft <= 0}
+                      className={`w-full text-left p-4 rounded-lg border transition ${selectedOption === i ? 'bg-red-500/20 border-red-400' : 'bg-white/10 border-white/20 hover:bg-white/15'} ${(answerSubmitted || timeLeft <= 0) ? 'opacity-80 cursor-not-allowed' : ''}`}>
+                      <span className="text-red-300 mr-2">{String.fromCharCode(65 + i)}.</span>{String(opt)}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={handleSubmitAnswer}
+                  disabled={selectedOption === null || answerSubmitted || submitting || timeLeft <= 0}
+                  className="btn-primary w-full mt-4 disabled:opacity-60 disabled:cursor-not-allowed">
+                  {submitting ? 'Submitting...' : answerSubmitted ? '✓ Submitted' : 'Submit Answer'}
+                </button>
+                {answerSubmitted && <div className="mt-3 text-sm rounded-lg p-3 border bg-white/10 border-white/20 text-white/80">Answer submitted. Wait for host.</div>}
+                {error && <div className="mt-3 text-xs text-red-300 text-center">{error}</div>}
+              </motion.div>
+            </div>
+          )
         ) : (
-          <div className="bg-white/10 p-4 rounded-lg mt-4 border border-white/10 text-center">
-            <h3 className="text-xl font-semibold">{status === 'playing' ? 'Game started!' : "You're in!"}</h3>
-            <p className="text-white/70 mt-1">
-              {status === 'playing' ? 'Waiting for host to send question...' : 'See your name on host screen?'}
-            </p>
+          // Waiting lobby
+          <div className="flex-1 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-10 max-w-md w-full card text-center">
+              <div className="mb-6">
+                <h2 className="text-white/60 text-sm uppercase tracking-widest mb-2">You are in!</h2>
+                <h1 className="text-3xl font-bold text-white mb-2">{playerName}</h1>
+                <div className="text-xs text-white/60 font-mono mb-4">{pin}</div>
+              </div>
+              <div className="bg-white/10 p-4 rounded-lg border border-white/10">
+                <h3 className="text-xl font-semibold">{status === 'playing' ? 'Game started!' : "You're in!"}</h3>
+                <p className="text-white/70 mt-1">{status === 'playing' ? 'Waiting for host to send question...' : 'See your name on the host screen?'}</p>
+              </div>
+              <div className="mt-4 text-xs text-white/60">{connected ? '🟢 Connected to lobby' : '🔴 Reconnecting...'}</div>
+              {error && <div className="mt-3 text-xs text-red-300">{error}</div>}
+            </motion.div>
           </div>
         )}
-
-        <div className="mt-4 text-xs text-white/60 text-center">
-          {connected ? 'Connected to lobby' : 'Reconnecting...'}
-        </div>
-
-        {error ? <div className="mt-3 text-xs text-red-300 text-center">{error}</div> : null}
-      </motion.div>
+      </div>
     </div>
   )
 }
