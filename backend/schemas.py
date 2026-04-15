@@ -10,6 +10,7 @@ class QuestionSchema(BaseModel):
     time_limit: int = Field(default=30, ge=5, le=600)
     question_type: str = Field(default="mcq")
     test_cases: Optional[List[dict]] = None
+    boilerplate_code: Optional[str] = None  # Starter code for code questions
 
 
 class QuizCreateRequest(BaseModel):
@@ -40,6 +41,7 @@ class QuestionResponse(BaseModel):
     order: int
     question_type: str = "mcq"
     test_cases: Optional[List[dict]] = None
+    boilerplate_code: Optional[str] = None  # Starter code for code questions
 
     class Config:
         from_attributes = True
