@@ -1,85 +1,161 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Crown, LogIn, Users, Zap } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, LogIn } from 'lucide-react'
+import Link from 'next/link'
+import { gameAPI } from '@/lib/api'
+import { getAuthUser } from '@/lib/auth'
 
-export default function Home() {
+export default function JoinPage() {
+  const router = useRouter()
+  const [code, setCode] = useState('')
+  const [pinFromUrl, setPinFromUrl] = useState<string | null>(null) // For direct join via QR/link
+  const [name, setName] = useState('')
+  const [rollNumber, setRollNumber] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const value = new URLSearchParams(window.location.search).get('pin') || ''
+    const normalized = value.toUpperCase()
+    if (normalized) {
+      setCode(normalized)
+      setPinFromUrl(normalized)
+    }
+
+    const authUser = getAuthUser()
+    if (authUser) {
+      setName((prev) => prev || authUser.full_name)
+      if (authUser.role === 'host') {
+        router.replace('/host')
+      }
+    }
+  }, [router])
+
+  const isDirectJoin = !!pinFromUrl // Direct join via QR/direct link - no code input needed
+  const effectivePin = isDirectJoin ? pinFromUrl! : code.trim().toUpperCase()
+
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (isDirectJoin) {
+      // Direct Join: only Name + Roll Number required (pin from URL)
+      if (!name.trim() || !rollNumber.trim()) {
+        alert('Please enter Name and Roll Number')
+        return
+      }
+      if (!effectivePin || !/^[A-Za-z0-9]{6}$/.test(effectivePin)) {
+        alert('Invalid join link. Please use the link or QR code shared by the host.')
+        return
+      }
+    } else {
+      // Unique Code Join: all three required
+      if (!code.trim() || !name.trim() || !rollNumber.trim()) {
+        alert('Please enter Name, Roll Number, and Given Code')
+        return
+      }
+      if (!/^[A-Za-z0-9]{6}$/.test(code.trim())) {
+        alert('Code must be 6 alphanumeric characters')
+        return
+      }
+    }
+
+    setLoading(true)
+    try {
+      const normalizedCode = effectivePin
+      const payload = { pin: normalizedCode, name: name.trim(), roll_number: rollNumber.trim() }
+      const response = await gameAPI.join(payload)
+      localStorage.setItem('playerId', response.data.id.toString())
+      localStorage.setItem('playerName', name.trim())
+      localStorage.setItem('playerRollNumber', rollNumber.trim())
+      localStorage.setItem('joinedPin', normalizedCode)
+      router.push(`/join/game?pin=${normalizedCode}`)
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Invalid code or failed to join session')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="app-shell">
-      <main className="page-wrap py-10 sm:py-14 md:py-20">
-        <div className="max-w-3xl mx-auto text-center mb-10 sm:mb-12">
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="brand-logo justify-center mb-3"
-          >
-            <Zap className="w-7 h-7 text-white" />
-            <span>Universe Studio</span>
-          </motion.div>
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="section-subtitle"
-          >
-            Create, host, and join adaptive quizzes in real time
-          </motion.p>
-        </div>
+    <div className="app-shell flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <Link href="/" className="btn-secondary mb-6 inline-flex">
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Link>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="max-w-2xl mx-auto space-y-4"
+          className="card"
         >
-          <Link href="/login?role=host" className="block card group hover:border-white/30 transition-all">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                <Crown className="w-7 h-7 text-white/90" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h2 className="text-2xl font-bold">Host a Quiz</h2>
-                <p className="text-sm sm:text-base text-white/65">Create and manage your quizzes</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-white/55 group-hover:text-white transition-colors" />
+          <h1 className="text-3xl font-bold mb-2 text-center">Join a Quiz</h1>
+          <p className="text-white/60 text-center mb-7">
+            {isDirectJoin
+              ? 'Enter your details to join (no code needed)'
+              : 'Enter your details and given code'}
+          </p>
+
+          <form onSubmit={handleJoin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold mb-2">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter your name"
+                className="input-field"
+              />
             </div>
-          </Link>
 
-          <Link href="/join" className="block card group hover:border-white/30 transition-all bg-white/5">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
-                <Users className="w-7 h-7 text-white/90" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h2 className="text-2xl font-bold">Join a Quiz</h2>
-                <p className="text-sm sm:text-base text-white/65">Enter your code and participate instantly</p>
-              </div>
-              <ArrowRight className="w-6 h-6 text-white/55 group-hover:text-white transition-colors" />
+            <div>
+              <label className="block text-sm font-semibold mb-2">Roll Number</label>
+              <input
+                type="text"
+                value={rollNumber}
+                onChange={(e) => setRollNumber(e.target.value)}
+                placeholder="E.g., 2301730326"
+                className="input-field"
+              />
             </div>
-          </Link>
-        </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="max-w-2xl mx-auto mt-8"
-        >
-          <Link href="/login" className="btn-secondary w-full">
-            <LogIn className="w-4 h-4" />
-            Login
-          </Link>
-        </motion.div>
-      </main>
+            {!isDirectJoin && (
+              <div>
+                <label className="block text-sm font-semibold mb-2">Given Code</label>
+                <input
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  placeholder="123456"
+                  maxLength={6}
+                  className="input-field text-center text-2xl font-mono tracking-[0.35em]"
+                />
+              </div>
+            )}
 
-      <footer className="border-t border-white/10 py-6 sm:py-8 mt-8">
-        <div className="page-wrap flex flex-col items-center gap-3 text-center">
-          <div className="text-sm text-white/70 leading-relaxed">
-            <p>Created by Varun, Bhaumik and Krish</p>
-            <p>Turning traditional quizzes into intelligent learning engines — fast, adaptive, and future-ready.</p>
-          </div>
-        </div>
-      </footer>
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+                  Joining...
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-5 h-5" />
+                  Join
+                </>
+              )}
+            </button>
+          </form>
+        </motion.div>
+      </div>
     </div>
   )
 }
