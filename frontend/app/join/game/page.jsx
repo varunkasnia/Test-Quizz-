@@ -256,9 +256,11 @@ export default function PlayerGamePage() {
     return <div className="min-h-screen flex items-center justify-center"><div className="card text-center py-10 max-w-md w-full"><p className="text-white/60">Loading game...</p></div></div>
   }
 
-  const isCode = question?.question_type === 'code'
-  const sampleCases = question?.sample_test_cases || []
-  const totalCases = question?.total_test_cases || 0
+  // Detect code questions: check question_type (new backend) OR absence of options (fallback for old backend)
+  const isCode = question?.question_type === 'code' || 
+                 (!question?.options || question.options.length === 0)
+  const sampleCases = question?.sample_test_cases || question?.test_cases?.filter(tc => tc.is_sample) || []
+  const totalCases = question?.total_test_cases || question?.test_cases?.length || 0
   const hiddenCount = Math.max(0, totalCases - sampleCases.length)
 
   return (
