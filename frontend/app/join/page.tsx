@@ -1,161 +1,417 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { useRouter } from 'next/navigation'
-import { ArrowLeft, LogIn } from 'lucide-react'
-import Link from 'next/link'
+import { getSocket } from '@/lib/socket'
 import { gameAPI } from '@/lib/api'
-import { getAuthUser } from '@/lib/auth'
+import Editor from '@monaco-editor/react'
 
-export default function JoinPage() {
+export default function PlayerGamePage() {
   const router = useRouter()
-  const [code, setCode] = useState('')
-  const [pinFromUrl, setPinFromUrl] = useState<string | null>(null) // For direct join via QR/link
-  const [name, setName] = useState('')
-  const [rollNumber, setRollNumber] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [pin, setPin] = useState('')
+  const [pinResolved, setPinResolved] = useState(false)
+  const [status, setStatus] = useState('waiting') // waiting, playing
+  const [playerName, setPlayerName] = useState('')
+  const [error, setError] = useState('')
+  const [connected, setConnected] = useState(false)
+  const [question, setQuestion] = useState(null)
+  const [timeLeft, setTimeLeft] = useState(0)
+  const [selectedOption, setSelectedOption] = useState(null)
+  const [answerSubmitted, setAnswerSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [certificateStatus, setCertificateStatus] = useState(null)
+  const [loadingCertificate, setLoadingCertificate] = useState(false)
+  const [codeLanguage, setCodeLanguage] = useState('python')
+  const [codeValue, setCodeValue] = useState('')
+  const [testResults, setTestResults] = useState(null)
+  const [runningCode, setRunningCode] = useState(false)
 
-  useEffect(() => {
-    const value = new URLSearchParams(window.location.search).get('pin') || ''
-    const normalized = value.toUpperCase()
-    if (normalized) {
-      setCode(normalized)
-      setPinFromUrl(normalized)
-    }
+  const PISTON_LANGUAGES = {
+    python: { language: 'python', version: '3.10.0' },
+    cpp: { language: 'c++', version: '10.2.0' },
+    java: { language: 'java', version: '15.0.2' },
+    javascript: { language: 'javascript', version: '18.15.0' },
+    c: { language: 'c', version: '10.2.0' },
+    csharp: { language: 'csharp', version: '6.12.0' },
+    go: { language: 'go', version: '1.16.2' },
+    rust: { language: 'rust', version: '1.68.2' },
+    ruby: { language: 'ruby', version: '3.0.1' },
+    swift: { language: 'swift', version: '5.3.3' }
+  }
 
-    const authUser = getAuthUser()
-    if (authUser) {
-      setName((prev) => prev || authUser.full_name)
-      if (authUser.role === 'host') {
-        router.replace('/host')
-      }
-    }
-  }, [router])
-
-  const isDirectJoin = !!pinFromUrl // Direct join via QR/direct link - no code input needed
-  const effectivePin = isDirectJoin ? pinFromUrl! : code.trim().toUpperCase()
-
-  const handleJoin = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (isDirectJoin) {
-      // Direct Join: only Name + Roll Number required (pin from URL)
-      if (!name.trim() || !rollNumber.trim()) {
-        alert('Please enter Name and Roll Number')
-        return
-      }
-      if (!effectivePin || !/^[A-Za-z0-9]{6}$/.test(effectivePin)) {
-        alert('Invalid join link. Please use the link or QR code shared by the host.')
-        return
-      }
-    } else {
-      // Unique Code Join: all three required
-      if (!code.trim() || !name.trim() || !rollNumber.trim()) {
-        alert('Please enter Name, Roll Number, and Given Code')
-        return
-      }
-      if (!/^[A-Za-z0-9]{6}$/.test(code.trim())) {
-        alert('Code must be 6 alphanumeric characters')
-        return
-      }
-    }
-
-    setLoading(true)
+  const runTests = async () => {
+    if (!question || !question.test_cases || runningCode || timeLeft <= 0) return
+    setRunningCode(true)
     try {
-      const normalizedCode = effectivePin
-      const payload = { pin: normalizedCode, name: name.trim(), roll_number: rollNumber.trim() }
-      const response = await gameAPI.join(payload)
-      localStorage.setItem('playerId', response.data.id.toString())
-      localStorage.setItem('playerName', name.trim())
-      localStorage.setItem('playerRollNumber', rollNumber.trim())
-      localStorage.setItem('joinedPin', normalizedCode)
-      router.push(`/join/game?pin=${normalizedCode}`)
-    } catch (error: any) {
-      alert(error.response?.data?.detail || 'Invalid code or failed to join session')
+      const results = []
+      for (const tc of question.test_cases) {
+        const payload = {
+          language: PISTON_LANGUAGES[codeLanguage]?.language || 'python',
+          version: PISTON_LANGUAGES[codeLanguage]?.version || '3.10.0',
+          files: [{ content: codeValue }],
+          stdin: tc.input
+        }
+        const res = await fetch('https://emkc.org/api/v2/piston/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        const data = await res.json()
+        const output = (data.run?.stdout || '').trim()
+        const passed = output === String(tc.expected_output).trim()
+        results.push({ passed, input: tc.input, expected: tc.expected_output, actual: output, error: data.run?.stderr })
+      }
+      setTestResults(results)
+      
+      const allPassed = results.every(r => r.passed)
+      if (allPassed) {
+         setSelectedOption("CODE_PASSED")
+      } else {
+         setSelectedOption(null)
+      }
+    } catch (e) {
+      console.error(e)
     } finally {
-      setLoading(false)
+      setRunningCode(false)
     }
   }
 
+  useEffect(() => {
+    const value = new URLSearchParams(window.location.search).get('pin') || ''
+    setPin(value.toUpperCase())
+    setPinResolved(true)
+  }, [])
+
+  useEffect(() => {
+    if (!question || status !== 'playing') return
+    if (timeLeft <= 0) return
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => Math.max(0, prev - 1))
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [question, status, timeLeft])
+
+  useEffect(() => {
+    if (!pinResolved) return
+
+    const storedName = localStorage.getItem('playerName')
+    const storedPlayerId = localStorage.getItem('playerId')
+
+    if (!pin) {
+      router.push('/join')
+      return
+    }
+
+    if (storedName) setPlayerName(storedName)
+    if (!storedName || !storedPlayerId) {
+      router.push('/join')
+      return
+    }
+
+    const socket = getSocket()
+
+    const onConnect = () => {
+      setConnected(true)
+      socket.emit('join_lobby', {
+        pin,
+        name: storedName,
+        player_id: Number(storedPlayerId),
+      })
+    }
+
+    const onDisconnect = () => setConnected(false)
+
+    const onGameStarted = () => {
+      setStatus('playing')
+    }
+
+    const onQuestionUpdate = (payload) => {
+      setStatus('playing')
+      setQuestion(payload)
+      setTimeLeft(payload?.time_limit || 30)
+      setSelectedOption(null)
+      setAnswerSubmitted(false)
+      setSubmitting(false)
+      setCodeValue('')
+      setTestResults(null)
+    }
+
+    const onSocketError = (payload) => {
+      setError(payload?.message || 'Socket error')
+    }
+
+    const onGameEnded = () => {
+      setStatus('ended')
+    }
+
+    socket.on('connect', onConnect)
+    socket.on('disconnect', onDisconnect)
+    socket.on('game_started', onGameStarted)
+    socket.on('question_update', onQuestionUpdate)
+    socket.on('game_ended', onGameEnded)
+    socket.on('error', onSocketError)
+
+    if (socket.connected) {
+      onConnect()
+    }
+
+    return () => {
+      socket.off('connect', onConnect)
+      socket.off('disconnect', onDisconnect)
+      socket.off('game_started', onGameStarted)
+      socket.off('question_update', onQuestionUpdate)
+      socket.off('game_ended', onGameEnded)
+      socket.off('error', onSocketError)
+    }
+  }, [pin, pinResolved, router])
+
+  const handleSubmitAnswer = async () => {
+    if (!question || answerSubmitted || submitting || selectedOption === null || timeLeft <= 0) return
+
+    const playerIdRaw = localStorage.getItem('playerId')
+    const playerId = Number(playerIdRaw)
+    const questionId = question?.question_id
+
+    if (!playerId || !questionId) {
+      setError('Missing player or question info')
+      return
+    }
+
+    const elapsed = Math.max(0, (question.time_limit || 30) - timeLeft)
+
+    setSubmitting(true)
+    try {
+      const answerValue = question.question_type === 'code' ? codeValue : String(question.options[selectedOption])
+      await gameAPI.submitAnswer({
+        player_id: playerId,
+        question_id: questionId,
+        answer: answerValue,
+        time_taken: elapsed,
+      })
+
+      setAnswerSubmitted(true)
+
+      const socket = getSocket()
+      socket.emit('submit_answer', {
+        pin,
+        player_id: playerId,
+        question_id: questionId,
+        answer: answerValue,
+        time_taken: elapsed,
+      })
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Failed to submit answer')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  useEffect(() => {
+    if (status !== 'ended' || !pin) return
+
+    const playerId = Number(localStorage.getItem('playerId'))
+    if (!playerId) return
+
+    let active = true
+    setLoadingCertificate(true)
+
+    gameAPI.getCertificateStatus(pin, playerId)
+      .then((response) => {
+        if (!active) return
+        setCertificateStatus(response.data || null)
+      })
+      .catch(() => {
+        if (!active) return
+        setCertificateStatus(null)
+      })
+      .finally(() => {
+        if (active) setLoadingCertificate(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [status, pin])
+
+  if (!pinResolved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="card text-center py-10 max-w-md w-full">
+          <p className="text-white/60">Loading game...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="app-shell flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Link href="/" className="btn-secondary mb-6 inline-flex">
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </Link>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-500/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-orange-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
+      </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="card"
-        >
-          <h1 className="text-3xl font-bold mb-2 text-center">Join a Quiz</h1>
-          <p className="text-white/60 text-center mb-7">
-            {isDirectJoin
-              ? 'Enter your details to join (no code needed)'
-              : 'Enter your details and given code'}
-          </p>
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="z-10 max-w-2xl w-full card"
+      >
+        <div className="mb-6 text-center">
+          <h2 className="text-white/60 text-sm uppercase tracking-widest mb-2">You are in!</h2>
+          <h1 className="text-3xl font-bold text-white mb-2">{playerName}</h1>
+          <div className="text-xs text-white/60 font-mono">{pin}</div>
+        </div>
 
-          <form onSubmit={handleJoin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold mb-2">Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your name"
-                className="input-field"
-              />
+        {status === 'ended' ? (
+          <div className="bg-white/10 p-5 rounded-lg border border-white/10 text-center">
+            <h3 className="text-xl font-semibold mb-1">Game ended</h3>
+            <p className="text-white/70">The host has ended the quiz.</p>
+            {loadingCertificate ? (
+              <p className="text-white/60 text-sm mt-3">Checking certificate eligibility...</p>
+            ) : certificateStatus ? (
+              <div className="mt-4">
+                <p className="text-sm text-white/80">
+                  Score: {certificateStatus.accuracy}%
+                </p>
+                {certificateStatus.game_finished && certificateStatus.template_uploaded && certificateStatus.eligible ? (
+                  <a
+                    href={gameAPI.downloadCertificateUrl(pin, certificateStatus.player_id)}
+                    className="btn-primary inline-block mt-3 px-5 py-2"
+                    download
+                  >
+                    Download Certificate
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : question ? (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">Question {Number(question.index || 0) + 1}</h3>
+              <div className="text-sm font-mono px-3 py-1 rounded bg-white/10 border border-white/20">{timeLeft}s</div>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold mb-2">Roll Number</label>
-              <input
-                type="text"
-                value={rollNumber}
-                onChange={(e) => setRollNumber(e.target.value)}
-                placeholder="E.g., 2301730326"
-                className="input-field"
-              />
+            <div className="bg-white text-slate-900 p-5 rounded-xl font-semibold text-lg mb-4">
+              {question.question_text}
             </div>
 
-            {!isDirectJoin && (
-              <div>
-                <label className="block text-sm font-semibold mb-2">Given Code</label>
-                <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="123456"
-                  maxLength={6}
-                  className="input-field text-center text-2xl font-mono tracking-[0.35em]"
-                />
+            {question.question_type === 'code' ? (
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-semibold">Write Code</span>
+                  <select 
+                    className="input-field py-1 h-8 w-32 min-h-0 text-sm bg-white/10"
+                    value={codeLanguage}
+                    onChange={(e) => setCodeLanguage(e.target.value)}
+                    disabled={answerSubmitted || timeLeft <= 0}
+                  >
+                    {Object.keys(PISTON_LANGUAGES).map(lang => (
+                      <option key={lang} value={lang}>{lang}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="h-64 mb-3 rounded-lg overflow-hidden border border-white/20">
+                  <Editor
+                    height="100%"
+                    language={codeLanguage}
+                    theme="vs-dark"
+                    value={codeValue}
+                    onChange={(value) => setCodeValue(value || '')}
+                    options={{
+                      minimap: { enabled: false },
+                      readOnly: answerSubmitted || timeLeft <= 0,
+                      fontSize: 14,
+                      scrollBeyondLastLine: false,
+                    }}
+                  />
+                </div>
+                
+                <button 
+                  onClick={runTests}
+                  disabled={runningCode || answerSubmitted || timeLeft <= 0}
+                  className="btn-secondary w-full mb-4"
+                >
+                  {runningCode ? 'Running Test Cases...' : 'Run Code against Test Cases'}
+                </button>
+
+                {testResults && (
+                  <div className="bg-black/40 rounded-xl p-3 text-sm font-mono overflow-auto max-h-40 border border-white/10">
+                    <p className="mb-2 font-bold opacity-80">Test Results:</p>
+                    {testResults.map((tr, i) => (
+                      <div key={i} className={`p-2 mb-2 rounded border-l-2 ${tr.passed ? 'border-green-500 bg-green-500/10' : 'border-red-500 bg-red-500/10'}`}>
+                        <div className={`font-bold ${tr.passed ? 'text-green-400' : 'text-red-400'}`}>
+                          Test Case {i+1}: {tr.passed ? 'PASSED' : 'FAILED'}
+                        </div>
+                        {!tr.passed && (
+                           <div className="mt-1 text-xs opacity-70">
+                             <div>Input: {tr.input}</div>
+                             <div>Expected: {tr.expected}</div>
+                             <div>Actual: {tr.actual || tr.error}</div>
+                           </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {(question.options || []).map((opt, i) => (
+                  <button
+                    key={`${i}-${String(opt)}`}
+                    type="button"
+                    onClick={() => {
+                      if (answerSubmitted || timeLeft <= 0) return
+                      setSelectedOption(i)
+                    }}
+                    disabled={answerSubmitted || timeLeft <= 0}
+                    className={`w-full text-left p-4 rounded-lg border transition ${
+                      selectedOption === i
+                        ? 'bg-red-500/20 border-red-400'
+                        : 'bg-white/10 border-white/20 hover:bg-white/15'
+                    } ${(answerSubmitted || timeLeft <= 0) ? 'opacity-80 cursor-not-allowed' : ''}`}
+                  >
+                    <span className="text-red-300 mr-2">{String.fromCharCode(65 + i)}.</span>
+                    {String(opt)}
+                  </button>
+                ))}
               </div>
             )}
 
             <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full flex items-center justify-center gap-2"
+              type="button"
+              onClick={handleSubmitAnswer}
+              disabled={selectedOption === null || answerSubmitted || submitting || timeLeft <= 0}
+              className="btn-primary w-full mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? (
-                <>
-                  <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
-                  Joining...
-                </>
-              ) : (
-                <>
-                  <LogIn className="w-5 h-5" />
-                  Join
-                </>
-              )}
+              {submitting ? 'Submitting...' : answerSubmitted ? 'Answer Submitted' : 'Submit Answer'}
             </button>
-          </form>
-        </motion.div>
-      </div>
+
+            {answerSubmitted ? (
+              <div className="mt-3 text-sm rounded-lg p-3 border bg-white/10 border-white/20 text-white/80">
+                Answer submitted. Wait for host to finish this question.
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="bg-white/10 p-4 rounded-lg mt-4 border border-white/10 text-center">
+            <h3 className="text-xl font-semibold">{status === 'playing' ? 'Game started!' : "You're in!"}</h3>
+            <p className="text-white/70 mt-1">
+              {status === 'playing' ? 'Waiting for host to send question...' : 'See your name on host screen?'}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-4 text-xs text-white/60 text-center">
+          {connected ? 'Connected to lobby' : 'Reconnecting...'}
+        </div>
+
+        {error ? <div className="mt-3 text-xs text-red-300 text-center">{error}</div> : null}
+      </motion.div>
     </div>
   )
 }
