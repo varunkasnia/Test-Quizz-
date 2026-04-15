@@ -24,6 +24,7 @@ QUIZ_JSON_SCHEMA = """
             "question_text": "The actual question text or code problem description with constraints and example I/O? MUST EXPLICITLY specify to use Standard Input (e.g. input()) and Standard Output (e.g. print()). Do not ask for class-based LeetCode style functions. The environment will directly execute the file.",
             "options": ["Option A", "Option B", "Option C", "Option D"], // Only if question_type is "mcq"
             "correct_answer": "Option A", // Only if question_type is "mcq"
+            "boilerplate_code": "def solve():\\n    pass\\n\\nif __name__ == '__main__':\\n    solve()", // Only if question_type is "code". Provide starter code template
             "test_cases": [
                 {"input": "...", "expected_output": "...", "is_sample": true},  // First 3 are visible sample cases (like LeetCode)
                 {"input": "...", "expected_output": "...", "is_sample": true},
@@ -94,8 +95,10 @@ def generate_quiz_from_text(content: str, num_questions: int = 10, difficulty: s
     
     Requirements:
     1. If the user asks for or the content represents coding exercises/DSA, provide code problems with test_cases and set question_type='code'.
-    2. For regular questions, provide 4 options, one correct answer, and set question_type='mcq'.
-    3. JSON Format:
+    2. For code questions, ALWAYS include boilerplate_code with a function skeleton or starter template that students can fill in.
+    3. For code questions, generate EXACTLY 8 test cases (3 sample/visible, 5 hidden).
+    4. For regular questions, provide 4 options, one correct answer, and set question_type='mcq'.
+    5. JSON Format:
     {QUIZ_JSON_SCHEMA}
     """
     return generate_with_fallback(prompt, difficulty, len(content))
@@ -109,8 +112,10 @@ def generate_quiz_from_topic(topic: str, num_questions: int = 10, difficulty: st
     Requirements:
     1. Questions must be factually accurate.
     2. If the user asks for coding or DSA questions in the topic, provide code problems with test_cases and set question_type='code'.
-    3. For regular questions, provide 4 options, one correct answer, and set question_type='mcq'.
-    4. JSON Format:
+    3. For code questions, ALWAYS include boilerplate_code with a function skeleton or starter template that students can fill in.
+    4. For code questions, generate EXACTLY 8 test cases (3 sample/visible, 5 hidden).
+    5. For regular questions, provide 4 options, one correct answer, and set question_type='mcq'.
+    6. JSON Format:
     {QUIZ_JSON_SCHEMA}
     """
     return generate_with_fallback(prompt, difficulty)
