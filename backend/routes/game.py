@@ -302,6 +302,88 @@ async def submit_answer(answer_data: SubmitAnswerRequest, db: Session = Depends(
     }
 
 
+@router.post("/code/submit")
+async def submit_code(data: CodeSubmitRequest, db: Session = Depends(get_db)):
+    """Run user code against ALL hidden test cases via Piston and score it."""
+    player = db.query(Player).filter(Player.id == data.player_id).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    question = db.query(Question).filter(Question.id == data.question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    # Get all test cases including hidden ones
+    test_cases = question.test_cases or []
+    if not test_cases:
+        raise HTTPException(status_code=400, detail="No test cases for this question")
+
+    lang_config = PISTON_LANGUAGE_MAP.get(data.language, {"language": "python", "version": "3.10.0"})
+
+    results = []
+    passed = 0
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        for i, tc in enumerate(test_cases):
+            try:
+                resp = await client.post(PISTON_API, json={
+                    "language": lang_config["language"],
+                    "version": lang_config["version"],
+                    "files": [{"content": data.code}],
+                    "stdin": tc.get("input", "")
+                })
+                run_data = resp.json()
+                actual = (run_data.get("run", {}).get("stdout") or "").strip()
+                expected = str(tc.get("expected_output", "")).strip()
+                ok = actual == expected
+                if ok:
+                    passed += 1
+                results.append({
+                    "index": i + 1,
+                    "passed": ok,
+                    "is_sample": tc.get("is_sample", i < 3),
+                    "input": tc.get("input") if tc.get("is_sample", i < 3) else "Hidden",
+                    "expected": expected if tc.get("is_sample", i < 3) else "Hidden",
+                    "actual": actual if tc.get("is_sample", i < 3) else ("✓" if ok else "✗"),
+                    "stderr": run_data.get("run", {}).get("stderr") or ""
+                })
+            except Exception:
+                results.append({"index": i + 1, "passed": False, "is_sample": tc.get("is_sample", i < 3), "error": "Execution error"})
+
+    total = len(test_cases)
+    pass_rate = passed / total if total > 0 else 0
+    # Score: base 1000 * pass_rate + speed bonus up to 500
+    base = int(1000 * pass_rate)
+    speed_bonus = int(500 * max(0, (question.time_limit - data.time_taken) / question.time_limit)) if pass_rate == 1.0 else 0
+    points = base + speed_bonus
+    is_correct = pass_rate == 1.0
+
+    # Avoid duplicate answers
+    existing = db.query(Answer).filter(
+        Answer.player_id == data.player_id,
+        Answer.question_id == data.question_id
+    ).first()
+    if not existing:
+        db.add(Answer(
+            player_id=data.player_id,
+            question_id=data.question_id,
+            answer=f"CODE:{data.language}:{passed}/{total}",
+            is_correct=is_correct,
+            time_taken=data.time_taken,
+            points_earned=points
+        ))
+        player.score += points
+        db.commit()
+
+    return {
+        "passed": passed,
+        "total": total,
+        "pass_rate": pass_rate,
+        "points_earned": points,
+        "results": results
+    }
+
+
 @router.get("/{pin}/question/{question_id}/results")
 async def get_question_results(pin: str, question_id: int, db: Session = Depends(get_db)):
     """Get per-question answer results for host view"""
