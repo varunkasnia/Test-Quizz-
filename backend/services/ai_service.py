@@ -21,7 +21,7 @@ QUIZ_JSON_SCHEMA = """
     "questions": [
         {
             "question_type": "mcq", // Use "mcq" for multiple choice, "code" for programming problems.
-            "question_text": "The actual question text or code problem description with constraints and example I/O?",
+            "question_text": "The actual question text or code problem description with constraints and example I/O? MUST EXPLICITLY specify to use Standard Input (e.g. input()) and Standard Output (e.g. print()). Do not ask for class-based LeetCode style functions. The environment will directly execute the file.",
             "options": ["Option A", "Option B", "Option C", "Option D"], // Only if question_type is "mcq"
             "correct_answer": "Option A", // Only if question_type is "mcq"
             "test_cases": [
