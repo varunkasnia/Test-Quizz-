@@ -120,6 +120,16 @@ export default function PlayerGamePage() {
     return () => clearInterval(timer)
   }, [question, status, timeLeft])
 
+  // Update Monaco editor when code value changes (e.g., new question with boilerplate)
+  useEffect(() => {
+    if (editorInstanceRef.current && monacoLoaded) {
+      const currentValue = editorInstanceRef.current.getValue()
+      if (currentValue !== codeValue) {
+        editorInstanceRef.current.setValue(codeValue)
+      }
+    }
+  }, [codeValue, monacoLoaded])
+
   useEffect(() => {
     if (!pinResolved) return
     const storedName = localStorage.getItem('playerName')
@@ -142,7 +152,8 @@ export default function PlayerGamePage() {
       setSelectedOption(null)
       setAnswerSubmitted(false)
       setSubmitting(false)
-      setCodeValue('')
+      // Set boilerplate code for code questions, or clear for MCQ
+      setCodeValue(payload?.boilerplate_code || '')
       setRunResults(null)
       setSubmitResults(null)
       setActiveTab('problem')
