@@ -216,13 +216,25 @@ async def next_question(sid, data):
     
     active_games[pin]['current_question'] = question_index
     
-    # Send question to all players (without correct answer)
+    # Separate sample (visible) vs hidden test cases for code questions
+    all_test_cases = question_data.get('test_cases') or []
+    sample_test_cases = [tc for tc in all_test_cases if tc.get('is_sample', False)]
+    # Fallback: if none flagged, first 3 are sample
+    if not sample_test_cases and all_test_cases:
+        sample_test_cases = all_test_cases[:3]
+    total_test_cases = len(all_test_cases)
+
+    # Send question to all players (without correct answer or hidden test cases)
     player_question = {
         'index': question_index,
         'question_id': question_data.get('id') or question_data.get('question_id'),
         'question_text': question_data['question_text'],
-        'options': question_data['options'],
-        'time_limit': question_data['time_limit']
+        'question_type': question_data.get('question_type', 'mcq'),
+        'options': question_data.get('options'),
+        'time_limit': question_data['time_limit'],
+        'sample_test_cases': sample_test_cases,   # Only visible sample cases
+        'total_test_cases': total_test_cases,       # So user knows how many hidden
+        # hidden test_cases NOT sent
     }
 
     active_games[pin]['current_question_data'] = player_question
