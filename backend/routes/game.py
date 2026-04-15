@@ -13,6 +13,31 @@ from pathlib import Path
 import shutil
 import uuid
 import re
+import httpx
+import json as _json
+from pydantic import BaseModel
+
+PISTON_API = "https://emkc.org/api/v2/piston/execute"
+
+PISTON_LANGUAGE_MAP = {
+    "python": {"language": "python", "version": "3.10.0"},
+    "cpp": {"language": "c++", "version": "10.2.0"},
+    "java": {"language": "java", "version": "15.0.2"},
+    "javascript": {"language": "javascript", "version": "18.15.0"},
+    "c": {"language": "c", "version": "10.2.0"},
+    "csharp": {"language": "csharp", "version": "6.12.0"},
+    "go": {"language": "go", "version": "1.16.2"},
+    "rust": {"language": "rust", "version": "1.68.2"},
+    "ruby": {"language": "ruby", "version": "3.0.1"},
+    "swift": {"language": "swift", "version": "5.3.3"},
+}
+
+class CodeSubmitRequest(BaseModel):
+    player_id: int
+    question_id: int
+    code: str
+    language: str
+    time_taken: float
 
 router = APIRouter(prefix="/api/game", tags=["Game"])
 CERTIFICATE_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "uploads" / "certificate_templates"
