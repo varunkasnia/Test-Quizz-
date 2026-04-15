@@ -4,12 +4,9 @@ export const dynamic = 'force-dynamic'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
+import Script from 'next/script'
 import { getSocket } from '@/lib/socket'
 import { gameAPI, codeAPI } from '@/lib/api'
-import dynamic_import from 'next/dynamic'
-
-// Dynamically import Monaco to avoid SSR issues
-const Editor = dynamic_import(() => import('@monaco-editor/react'), { ssr: false })
 
 const PISTON_LANGUAGES = {
   python: { language: 'python', version: '3.10.0' },
@@ -22,6 +19,62 @@ const PISTON_LANGUAGES = {
   rust: { language: 'rust', version: '1.68.2' },
   ruby: { language: 'ruby', version: '3.0.1' },
   swift: { language: 'swift', version: '5.3.3' },
+}
+
+function MonacoEditor({ value, onChange, language, readOnly }) {
+  const containerRef = useRef(null)
+  const editorRef = useRef(null)
+  const [monacoReady, setMonacoReady] = useState(false)
+
+  // Initialize editor once monaco is loaded
+  const initEditor = () => {
+    if (!containerRef.current || editorRef.current) return
+    if (typeof window === 'undefined' || !window.monaco) return
+
+    const monacoLang = language === 'cpp' ? 'cpp' : language === 'csharp' ? 'csharp' : language
+    editorRef.current = window.monaco.editor.create(containerRef.current, {
+      value: value || '',
+      language: monacoLang,
+      theme: 'vs-dark',
+      minimap: { enabled: false },
+      fontSize: 14,
+      fontFamily: 'JetBrains Mono, Fira Code, Consolas, monospace',
+      lineNumbers: 'on',
+      scrollBeyondLastLine: false,
+      automaticLayout: true,
+      tabSize: 4,
+      readOnly: readOnly || false,
+    })
+
+    editorRef.current.onDidChangeModelContent(() => {
+      if (onChange) onChange(editorRef.current.getValue())
+    })
+    setMonacoReady(true)
+  }
+
+  // Re-initialize if container changes
+  useEffect(() => {
+    if (window.monaco) {
+      initEditor()
+    }
+  }, [containerRef.current])
+
+  // Update language when it changes
+  useEffect(() => {
+    if (!editorRef.current || !window.monaco) return
+    const monacoLang = language === 'cpp' ? 'cpp' : language === 'csharp' ? 'csharp' : language
+    window.monaco.editor.setModelLanguage(editorRef.current.getModel(), monacoLang)
+  }, [language])
+
+  // Update readOnly
+  useEffect(() => {
+    if (!editorRef.current) return
+    editorRef.current.updateOptions({ readOnly: readOnly || false })
+  }, [readOnly])
+
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+  )
 }
 
 export default function PlayerGamePage() {
@@ -39,16 +92,18 @@ export default function PlayerGamePage() {
   const [submitting, setSubmitting] = useState(false)
   const [certificateStatus, setCertificateStatus] = useState(null)
   const [loadingCertificate, setLoadingCertificate] = useState(false)
+  const [monacoLoaded, setMonacoLoaded] = useState(false)
 
   // Code editor states
   const [codeLanguage, setCodeLanguage] = useState('python')
   const [codeValue, setCodeValue] = useState('')
-  const [runResults, setRunResults] = useState(null)   // sample test case results
-  const [submitResults, setSubmitResults] = useState(null) // all 8 hidden test case results
+  const [runResults, setRunResults] = useState(null)
+  const [submitResults, setSubmitResults] = useState(null)
   const [runningCode, setRunningCode] = useState(false)
   const [submittingCode, setSubmittingCode] = useState(false)
-  const [activeTab, setActiveTab] = useState('problem') // 'problem' | 'results'
+  const [activeTab, setActiveTab] = useState('problem')
   const startTimeRef = useRef(Date.now())
+  const editorInstanceRef = useRef(null)
 
   useEffect(() => {
     const value = new URLSearchParams(window.location.search).get('pin') || ''
@@ -67,17 +122,13 @@ export default function PlayerGamePage() {
 
   useEffect(() => {
     if (!pinResolved) return
-
     const storedName = localStorage.getItem('playerName')
     const storedPlayerId = localStorage.getItem('playerId')
-
     if (!pin) { router.push('/join'); return }
     if (!storedName || !storedPlayerId) { router.push('/join'); return }
-
     if (storedName) setPlayerName(storedName)
 
     const socket = getSocket()
-
     const onConnect = () => {
       setConnected(true)
       socket.emit('join_lobby', { pin, name: storedName, player_id: Number(storedPlayerId) })
@@ -106,7 +157,6 @@ export default function PlayerGamePage() {
     socket.on('question_update', onQuestionUpdate)
     socket.on('game_ended', onGameEnded)
     socket.on('error', onSocketError)
-
     if (socket.connected) onConnect()
 
     return () => {
@@ -119,7 +169,6 @@ export default function PlayerGamePage() {
     }
   }, [pin, pinResolved, router])
 
-  // Run code against SAMPLE test cases only (client-side, via Piston)
   const handleRun = async () => {
     if (!question || runningCode || timeLeft <= 0) return
     const sampleCases = question.sample_test_cases || []
@@ -142,12 +191,7 @@ export default function PlayerGamePage() {
         const data = await res.json()
         const actual = (data.run?.stdout || '').trim()
         const expected = String(tc.expected_output || '').trim()
-        results.push({
-          passed: actual === expected,
-          input: tc.input, expected, actual,
-          stderr: data.run?.stderr || '',
-          isSample: true
-        })
+        results.push({ passed: actual === expected, input: tc.input, expected, actual, stderr: data.run?.stderr || '' })
       }
       setRunResults(results)
     } catch (e) {
@@ -157,27 +201,18 @@ export default function PlayerGamePage() {
     }
   }
 
-  // Submit code against ALL hidden test cases (server-side)
   const handleCodeSubmit = async () => {
     if (!question || submittingCode || answerSubmitted || timeLeft <= 0) return
     const playerId = Number(localStorage.getItem('playerId'))
     const questionId = question?.question_id
     if (!playerId || !questionId) return
     const timeTaken = Math.max(0, (Date.now() - startTimeRef.current) / 1000)
-
     setSubmittingCode(true)
     setActiveTab('results')
     try {
-      const res = await codeAPI.submit({
-        player_id: playerId,
-        question_id: questionId,
-        code: codeValue,
-        language: codeLanguage,
-        time_taken: timeTaken,
-      })
+      const res = await codeAPI.submit({ player_id: playerId, question_id: questionId, code: codeValue, language: codeLanguage, time_taken: timeTaken })
       setSubmitResults(res.data)
       setAnswerSubmitted(true)
-      // Notify socket
       getSocket().emit('submit_answer', { pin, player_id: playerId, question_id: questionId, answer: `CODE:${codeLanguage}`, time_taken: timeTaken })
     } catch (e) {
       setError(e?.response?.data?.detail || 'Submission failed')
@@ -186,14 +221,12 @@ export default function PlayerGamePage() {
     }
   }
 
-  // Submit MCQ answer
   const handleSubmitAnswer = async () => {
     if (!question || answerSubmitted || submitting || selectedOption === null || timeLeft <= 0) return
     const playerId = Number(localStorage.getItem('playerId'))
     const questionId = question?.question_id
     if (!playerId || !questionId) return
     const elapsed = Math.max(0, (question.time_limit || 30) - timeLeft)
-
     setSubmitting(true)
     try {
       await gameAPI.submitAnswer({ player_id: playerId, question_id: questionId, answer: String(question.options[selectedOption]), time_taken: elapsed })
@@ -226,10 +259,22 @@ export default function PlayerGamePage() {
   const isCode = question?.question_type === 'code'
   const sampleCases = question?.sample_test_cases || []
   const totalCases = question?.total_test_cases || 0
-  const hiddenCount = totalCases - sampleCases.length
+  const hiddenCount = Math.max(0, totalCases - sampleCases.length)
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white flex flex-col">
+      {/* Monaco loader from CDN - no npm package needed */}
+      <Script
+        src="https://cdn.jsdelivr.net/npm/monaco-editor@0.46.0/min/vs/loader.js"
+        strategy="afterInteractive"
+        onLoad={() => {
+          window.require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.46.0/min/vs' } })
+          window.require(['vs/editor/editor.main'], () => {
+            setMonacoLoaded(true)
+          })
+        }}
+      />
+
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#161b22]">
         <span className="font-bold text-sm font-mono tracking-widest text-white/60">{pin}</span>
@@ -257,27 +302,22 @@ export default function PlayerGamePage() {
           </div>
         ) : question ? (
           isCode ? (
-            // LeetCode Layout: left panel = problem, right panel = editor + test results
             <div className="flex flex-1 overflow-hidden">
-              {/* Left: Problem Description */}
-              <div className="w-2/5 flex flex-col border-r border-white/10 overflow-y-auto bg-[#0d1117]">
-                {/* Tabs */}
-                <div className="flex border-b border-white/10">
+              {/* Left: Problem + Results */}
+              <div className="w-2/5 flex flex-col border-r border-white/10 overflow-hidden bg-[#0d1117]">
+                <div className="flex border-b border-white/10 shrink-0">
                   {['problem', 'results'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
                       className={`px-5 py-2 text-sm font-medium capitalize transition ${activeTab === tab ? 'text-white border-b-2 border-blue-500' : 'text-white/50 hover:text-white/80'}`}>
-                      {tab === 'results' ? `Results` : 'Problem'}
+                      {tab}
                     </button>
                   ))}
                 </div>
-
                 <div className="p-5 flex-1 overflow-y-auto">
                   {activeTab === 'problem' ? (
                     <>
-                      <h2 className="text-lg font-bold mb-3 text-white">Q{Number(question.index || 0) + 1}. Code Problem</h2>
+                      <h2 className="text-lg font-bold mb-3">Q{Number(question.index || 0) + 1}. Code Problem</h2>
                       <div className="text-white/85 text-sm leading-relaxed whitespace-pre-wrap mb-5">{question.question_text}</div>
-                      
-                      {/* Sample test cases (visible like LeetCode) */}
                       {sampleCases.length > 0 && (
                         <div className="mt-4">
                           <h3 className="text-xs font-bold uppercase tracking-widest text-white/50 mb-3">Sample Test Cases</h3>
@@ -288,27 +328,22 @@ export default function PlayerGamePage() {
                               <div><span className="text-white/50">Output: </span><span className="text-blue-300">{String(tc.expected_output)}</span></div>
                             </div>
                           ))}
-                          {hiddenCount > 0 && (
-                            <p className="text-xs text-white/40 italic">+ {hiddenCount} hidden test cases evaluated on Submit</p>
-                          )}
+                          {hiddenCount > 0 && <p className="text-xs text-white/40 italic">+ {hiddenCount} hidden test cases evaluated on Submit</p>}
                         </div>
                       )}
                     </>
                   ) : (
-                    // Results tab
                     <div>
                       {submitResults ? (
                         <>
-                          {/* Summary banner */}
                           <div className={`rounded-lg p-4 mb-4 border ${submitResults.pass_rate === 1 ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
                             <div className={`text-xl font-bold ${submitResults.pass_rate === 1 ? 'text-green-400' : 'text-red-400'}`}>
                               {submitResults.pass_rate === 1 ? '✓ Accepted' : '✗ Wrong Answer'}
                             </div>
                             <div className="text-sm text-white/60 mt-1">
-                              Passed {submitResults.passed}/{submitResults.total} test cases · {submitResults.points_earned} pts
+                              Passed {submitResults.passed}/{submitResults.total} tests · {submitResults.points_earned} pts
                             </div>
                           </div>
-                          {/* Per-case results */}
                           {submitResults.results.map((r, i) => (
                             <div key={i} className={`mb-3 rounded-lg p-3 text-xs font-mono border-l-2 ${r.passed ? 'border-green-500 bg-green-500/5' : 'border-red-500 bg-red-500/5'}`}>
                               <div className={`font-bold mb-1 ${r.passed ? 'text-green-400' : 'text-red-400'}`}>
@@ -327,12 +362,10 @@ export default function PlayerGamePage() {
                         </>
                       ) : runResults ? (
                         <>
-                          <h3 className="text-sm font-semibold mb-3 text-white">Sample Test Results</h3>
+                          <h3 className="text-sm font-semibold mb-3">Sample Test Results</h3>
                           {runResults.map((r, i) => (
                             <div key={i} className={`mb-3 rounded-lg p-3 text-xs font-mono border-l-2 ${r.passed ? 'border-green-500 bg-green-500/5' : 'border-red-500 bg-red-500/5'}`}>
-                              <div className={`font-bold mb-1 ${r.passed ? 'text-green-400' : 'text-red-400'}`}>
-                                {r.passed ? '✓ Passed' : '✗ Failed'} — Case {i + 1}
-                              </div>
+                              <div className={`font-bold mb-1 ${r.passed ? 'text-green-400' : 'text-red-400'}`}>{r.passed ? '✓ Passed' : '✗ Failed'} — Case {i + 1}</div>
                               <div className="space-y-0.5 text-white/60">
                                 <div>Input: <span className="text-white/80">{r.input}</span></div>
                                 <div>Expected: <span className="text-blue-300">{r.expected}</span></div>
@@ -341,72 +374,84 @@ export default function PlayerGamePage() {
                               </div>
                             </div>
                           ))}
-                          <p className="text-xs text-white/40 mt-3 italic">These are sample cases only. Submit to run all {totalCases} test cases.</p>
+                          <p className="text-xs text-white/40 mt-3 italic">Submit to run all {totalCases} test cases.</p>
                         </>
                       ) : (
-                        <p className="text-white/40 text-sm italic text-center mt-10">Run or Submit code to see results here.</p>
+                        <p className="text-white/40 text-sm italic text-center mt-10">Run or Submit to see results here.</p>
                       )}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Right: Editor + action bar */}
+              {/* Right: Monaco Editor */}
               <div className="flex-1 flex flex-col bg-[#1e1e1e]">
-                {/* Editor toolbar */}
-                <div className="flex items-center justify-between px-3 py-2 bg-[#252526] border-b border-white/10">
+                <div className="flex items-center justify-between px-3 py-2 bg-[#252526] border-b border-white/10 shrink-0">
                   <select
                     className="bg-[#3c3c3c] text-white text-xs px-2 py-1 rounded border border-white/20 outline-none"
                     value={codeLanguage}
-                    onChange={(e) => setCodeLanguage(e.target.value)}
+                    onChange={(e) => {
+                      setCodeLanguage(e.target.value)
+                      if (editorInstanceRef.current && window.monaco) {
+                        const newLang = e.target.value === 'cpp' ? 'cpp' : e.target.value
+                        window.monaco.editor.setModelLanguage(editorInstanceRef.current.getModel(), newLang)
+                      }
+                    }}
                     disabled={answerSubmitted || timeLeft <= 0}
                   >
                     {Object.keys(PISTON_LANGUAGES).map(lang => (
                       <option key={lang} value={lang}>{lang.charAt(0).toUpperCase() + lang.slice(1)}</option>
                     ))}
                   </select>
-                  <div className="text-xs text-white/40">Monaco Editor · VS Dark</div>
+                  <div className="text-xs text-white/40">VS Code Editor</div>
                 </div>
 
-                {/* Monaco Editor */}
-                <div className="flex-1 min-h-0">
-                  <Editor
-                    height="100%"
-                    language={codeLanguage === 'cpp' ? 'cpp' : codeLanguage === 'csharp' ? 'csharp' : codeLanguage}
-                    theme="vs-dark"
-                    value={codeValue}
-                    onChange={(value) => setCodeValue(value || '')}
-                    options={{
+                {/* Editor container — Monaco attaches here */}
+                <div
+                  className="flex-1 min-h-0"
+                  ref={(container) => {
+                    if (!container || editorInstanceRef.current) return
+                    if (!monacoLoaded || !window.monaco) return
+                    editorInstanceRef.current = window.monaco.editor.create(container, {
+                      value: codeValue || '',
+                      language: codeLanguage,
+                      theme: 'vs-dark',
                       minimap: { enabled: false },
-                      readOnly: answerSubmitted || timeLeft <= 0,
                       fontSize: 14,
-                      fontFamily: 'JetBrains Mono, Fira Code, monospace',
+                      fontFamily: 'JetBrains Mono, Fira Code, Consolas, monospace',
                       lineNumbers: 'on',
                       scrollBeyondLastLine: false,
                       automaticLayout: true,
                       tabSize: 4,
-                    }}
-                  />
-                </div>
+                    })
+                    editorInstanceRef.current.onDidChangeModelContent(() => {
+                      setCodeValue(editorInstanceRef.current.getValue())
+                    })
+                  }}
+                />
 
-                {/* Bottom action bar */}
-                <div className="flex items-center justify-between px-4 py-3 bg-[#1a1a2e] border-t border-white/10">
+                {/* Fallback textarea when Monaco isn't loaded */}
+                {!monacoLoaded && (
+                  <textarea
+                    className="flex-1 bg-[#1e1e1e] text-white font-mono text-sm p-4 resize-none outline-none border-none"
+                    value={codeValue}
+                    onChange={(e) => setCodeValue(e.target.value)}
+                    placeholder={`Write your ${codeLanguage} solution here...`}
+                    disabled={answerSubmitted || timeLeft <= 0}
+                  />
+                )}
+
+                <div className="flex items-center justify-between px-4 py-3 bg-[#1a1a2e] border-t border-white/10 shrink-0">
                   <div className="text-xs text-white/40">
-                    {sampleCases.length} sample · {hiddenCount} hidden cases
+                    {sampleCases.length} sample · {hiddenCount} hidden
                   </div>
                   <div className="flex gap-3">
-                    <button
-                      onClick={handleRun}
-                      disabled={runningCode || answerSubmitted || timeLeft <= 0 || !codeValue.trim()}
-                      className="px-4 py-1.5 text-sm rounded bg-white/10 border border-white/20 hover:bg-white/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
+                    <button onClick={handleRun} disabled={runningCode || answerSubmitted || timeLeft <= 0 || !codeValue.trim()}
+                      className="px-4 py-1.5 text-sm rounded bg-white/10 border border-white/20 hover:bg-white/20 transition disabled:opacity-40 disabled:cursor-not-allowed">
                       {runningCode ? '⏳ Running...' : '▶ Run'}
                     </button>
-                    <button
-                      onClick={handleCodeSubmit}
-                      disabled={submittingCode || answerSubmitted || timeLeft <= 0 || !codeValue.trim()}
-                      className="px-4 py-1.5 text-sm rounded bg-green-600 hover:bg-green-500 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
+                    <button onClick={handleCodeSubmit} disabled={submittingCode || answerSubmitted || timeLeft <= 0 || !codeValue.trim()}
+                      className="px-4 py-1.5 text-sm rounded bg-green-600 hover:bg-green-500 transition font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
                       {submittingCode ? '⏳ Submitting...' : answerSubmitted ? '✓ Submitted' : '↑ Submit'}
                     </button>
                   </div>
@@ -424,6 +469,7 @@ export default function PlayerGamePage() {
                 </div>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-semibold">Question {Number(question.index || 0) + 1}</h3>
+                  <span className={`text-sm font-mono px-3 py-1 rounded bg-white/10 border border-white/20 ${timeLeft <= 10 ? 'text-red-400 animate-pulse' : ''}`}>{timeLeft}s</span>
                 </div>
                 <div className="bg-white text-slate-900 p-5 rounded-xl font-semibold text-lg mb-4">{question.question_text}</div>
                 <div className="grid grid-cols-1 gap-3">
@@ -447,19 +493,16 @@ export default function PlayerGamePage() {
             </div>
           )
         ) : (
-          // Waiting lobby
           <div className="flex-1 flex items-center justify-center p-4">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-10 max-w-md w-full card text-center">
-              <div className="mb-6">
-                <h2 className="text-white/60 text-sm uppercase tracking-widest mb-2">You are in!</h2>
-                <h1 className="text-3xl font-bold text-white mb-2">{playerName}</h1>
-                <div className="text-xs text-white/60 font-mono mb-4">{pin}</div>
-              </div>
+              <h2 className="text-white/60 text-sm uppercase tracking-widest mb-2">You are in!</h2>
+              <h1 className="text-3xl font-bold text-white mb-2">{playerName}</h1>
+              <div className="text-xs text-white/60 font-mono mb-4">{pin}</div>
               <div className="bg-white/10 p-4 rounded-lg border border-white/10">
                 <h3 className="text-xl font-semibold">{status === 'playing' ? 'Game started!' : "You're in!"}</h3>
                 <p className="text-white/70 mt-1">{status === 'playing' ? 'Waiting for host to send question...' : 'See your name on the host screen?'}</p>
               </div>
-              <div className="mt-4 text-xs text-white/60">{connected ? '🟢 Connected to lobby' : '🔴 Reconnecting...'}</div>
+              <div className="mt-4 text-xs text-white/60">{connected ? '🟢 Connected' : '🔴 Reconnecting...'}</div>
               {error && <div className="mt-3 text-xs text-red-300">{error}</div>}
             </motion.div>
           </div>
