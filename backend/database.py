@@ -38,6 +38,7 @@ class Question(Base):
     order = Column(Integer, default=0)
     question_type = Column(String(50), default="mcq") # mcq or code
     test_cases = Column(JSON, nullable=True) # list of dicts
+    boilerplate_code = Column(Text, nullable=True) # starter code for code questions
     
     quiz = relationship("Quiz", back_populates="questions")
 
@@ -118,6 +119,8 @@ def _ensure_question_code_columns():
             conn.execute(text("ALTER TABLE questions ADD COLUMN question_type VARCHAR(50) DEFAULT 'mcq'"))
         if "test_cases" not in columns:
             conn.execute(text("ALTER TABLE questions ADD COLUMN test_cases JSON"))
+        if "boilerplate_code" not in columns:
+            conn.execute(text("ALTER TABLE questions ADD COLUMN boilerplate_code TEXT"))
 
 
 def _ensure_game_session_certificate_columns():
