@@ -39,6 +39,12 @@ class CodeSubmitRequest(BaseModel):
     language: str
     time_taken: float
 
+class CodeRunRequest(BaseModel):
+    """Request to run code against sample test cases"""
+    code: str
+    language: str
+    test_input: str  # Single test input to run
+
 router = APIRouter(prefix="/api/game", tags=["Game"])
 CERTIFICATE_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "uploads" / "certificate_templates"
 CERTIFICATE_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
@@ -300,6 +306,42 @@ async def submit_answer(answer_data: SubmitAnswerRequest, db: Session = Depends(
     return {
         "message": "Answer submitted successfully"
     }
+
+
+@router.post("/code/run")
+async def run_code(data: CodeRunRequest):
+    """Run user code against a single test case (for sample testing during gameplay)"""
+    lang_config = PISTON_LANGUAGE_MAP.get(data.language, {"language": "python", "version": "3.10.0"})
+    
+    try:
+        # Use httpx with timeout to call Piston API
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(PISTON_API, json={
+                "language": lang_config["language"],
+                "version": lang_config["version"],
+                "files": [{"content": data.code}],
+                "stdin": data.test_input or ""
+            })
+            
+            if resp.status_code != 200:
+                return {
+                    "stdout": "",
+                    "stderr": f"Execution failed with status {resp.status_code}",
+                    "error": True
+                }
+            
+            result = resp.json()
+            return {
+                "stdout": result.get("run", {}).get("stdout", ""),
+                "stderr": result.get("run", {}).get("stderr", ""),
+                "error": False
+            }
+    except Exception as e:
+        return {
+            "stdout": "",
+            "stderr": f"Error: {str(e)}",
+            "error": True
+        }
 
 
 @router.post("/code/submit")
